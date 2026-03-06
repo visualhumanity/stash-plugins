@@ -1,12 +1,10 @@
 #!/bin/bash
-# AGPLv3.0
-# https://github.com/stashapp/CommunityScripts/blob/main/LICENSE
 
-# builds a repository of plugins
+# builds a repository of scrapers
 # outputs to _site with the following structure:
 # index.yml
-# <plugin_id>.zip
-# Each zip file contains the plugin.yml file and any other files in the same directory
+# <scraper_id>.zip
+# Each zip file contains the scraper.yml file and any other files in the same directory
 
 outdir="$1"
 if [ -z "$outdir" ]; then
@@ -19,7 +17,12 @@ mkdir -p "$outdir"
 buildPlugin() 
 {
     f=$1
-    # get the plugin id from the directory
+
+    if grep -q "^#pkgignore" "$f"; then
+        return
+    fi
+    
+    # get the scraper id from the directory
     dir=$(dirname "$f")
     plugin_id=$(basename "$f" .yml)
 
@@ -65,5 +68,8 @@ buildPlugin()
 }
 
 find ./plugins -mindepth 1 -name *.yml | while read file; do
+    buildPlugin "$file"
+done
+find ./themes -mindepth 1 -name *.yml | while read file; do
     buildPlugin "$file"
 done
