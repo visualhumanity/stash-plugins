@@ -1,0 +1,24 @@
+name: Auto-set Performer Gender
+description: Sets a newly created performer's gender to a configured default if it wasn't already set
+version: 1.0
+# requires: PythonDepManager
+exec:
+  - python
+  - "{pluginDir}/autoSetPerformerGender.py"
+interface: raw
+
+hooks:
+  - name: Set default gender on performer creation
+    description: Sets the performer's gender to the configured default if it has no gender set
+    triggeredBy:
+      - Performer.Create.Post
+
+settings:
+  defaultGender:
+    displayName: Default gender
+    description: >
+      Gender to apply to newly created performers that don't already have one set.
+      Must exactly match one of Stash's built-in gender options (case-insensitive):
+      MALE, FEMALE, TRANSGENDER_MALE, TRANSGENDER_FEMALE, INTERSEX, NON_BINARY.
+      Leave blank to disable the plugin. An existing performer gender is never overwritten.
+    type: STRING
