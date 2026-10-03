@@ -95,7 +95,7 @@ Manifest `tasks:` entry, e.g. "Clear scene fields", invoked by the UI through `r
 
 ## Decisions and open items
 
-- **JS authoring:** this repo tracks only compiled JS and has no TypeScript source or build step for it. This plugin's JS will be hand-written plain ES (React via `React.createElement`), committed as-is, with no build infrastructure added. Confirm this is acceptable.
+- **JS authoring (decided):** this repo tracks only compiled JS and has no TypeScript source or build step for it. This plugin's JS will be hand-written plain ES (React via `React.createElement`), committed as-is, with no build infrastructure added. Approved.
 - **List button placement:** the list toolbar's operations component is not a documented patch point. Candidates: patch `FilteredSceneList`/`SceneList`, or fall back to a floating action bar above the list. Resolved by the prototype check; the user-facing behaviour is the same.
 - **Detail-page menu:** confirm the "⋯" menu can be extended through a documented patch point (`ScenePage`/`ScenePage.Tabs`); fall back to a button in the Edit panel if not.
 - **Stash version:** developed against Stash v0.31.1; the manifest does not pin a minimum version.
