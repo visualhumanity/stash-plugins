@@ -10,6 +10,7 @@ Plugins for [Stash](https://github.com/stashapp/stash), published as a self-host
 |-----------|------|------|-------------|
 | `flexibleDateInput` | Flexible Date Input | UI | Patches Stash's date input field with an "Attempt to fix?" helper that normalises a wide range of date formats (YYYYMMDD, MM-DD-YYYY, DD/MM/YYYY, epoch, etc.) into the required YYYY-MM-DD format |
 | `autoSetPerformerGender` | Auto-set Performer Gender | Backend/hook | Sets a newly created performer's gender to a configured default if it doesn't already have one; fires on `Performer.Create.Post`, never overwrites an existing gender |
+| `vhClearFields` | VH - Clear Fields | UI + Backend/task | Adds a "Clear fields..." button to the scene list (selected scenes) and scene page; a two-step dialog picks fields and confirms, then a background task clears the chosen fields (title, URLs, date, director, performers, studio, details, stash IDs, studio code) on every selected scene |
 
 ## Directory structure
 

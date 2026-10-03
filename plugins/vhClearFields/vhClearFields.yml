@@ -1,0 +1,54 @@
+name: VH - Clear Fields
+description: Bulk-clears chosen metadata fields on selected scenes from a Clear fields button on the scene list and scene page. Runs as a background task.
+version: 1.0
+ui:
+  javascript:
+    - vhClearFields.js
+  css:
+    - vhClearFields.css
+exec:
+  - python
+  - "{pluginDir}/vhClearFields.py"
+interface: raw
+tasks:
+  - name: Clear scene fields
+    description: Clears the given fields on the given scenes. Started by the Clear fields button, not meant to be run by hand.
+    defaultArgs:
+      mode: vhClearFields
+settings:
+  clearTitle:
+    displayName: Title
+    description: Clear the title by default in the Clear fields dialog
+    type: BOOLEAN
+  clearUrls:
+    displayName: URLs
+    description: Clear the URLs by default in the Clear fields dialog
+    type: BOOLEAN
+  clearDate:
+    displayName: Date
+    description: Clear the date by default in the Clear fields dialog
+    type: BOOLEAN
+  clearDirector:
+    displayName: Director
+    description: Clear the director by default in the Clear fields dialog
+    type: BOOLEAN
+  clearPerformers:
+    displayName: Performers
+    description: Clear the performers by default in the Clear fields dialog
+    type: BOOLEAN
+  clearStudio:
+    displayName: Studio
+    description: Clear the studio by default in the Clear fields dialog
+    type: BOOLEAN
+  clearDetails:
+    displayName: Details
+    description: Clear the details by default in the Clear fields dialog
+    type: BOOLEAN
+  clearStashIds:
+    displayName: Stash IDs
+    description: Clear the stash IDs by default in the Clear fields dialog
+    type: BOOLEAN
+  clearCode:
+    displayName: Studio code
+    description: Clear the studio code by default in the Clear fields dialog
+    type: BOOLEAN
