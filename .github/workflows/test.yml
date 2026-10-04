@@ -16,4 +16,4 @@ jobs:
       - name: Install optional test dependencies
         run: pip install pyyaml
       - name: Run tests
-        run: python3 -m unittest discover -s tests/ -p "test_*.py" -v
+        run: python3 -m unittest discover -t . -s tests/ -p "test_*.py" -v

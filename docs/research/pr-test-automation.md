@@ -12,8 +12,9 @@ Tests use Python's stdlib `unittest` module ([docs.python.org/3/library/unittest
 
 - Test files follow the `test_*.py` naming convention and live under `tests/<plugin_name>/`.
 - No third-party test runner (pytest, tox, nose) is used or required.
-- Discovery command: `python3 -m unittest discover -s tests/ -p "test_*.py" -v`
-  — this scans `tests/` recursively and auto-discovers new test directories as plugins gain coverage.
+- Discovery command: `python3 -m unittest discover -t . -s tests/ -p "test_*.py" -v`
+  — `-t .` sets the repo root as the top-level import base, preventing the test package name (`tests.vhClearFields`) from shadowing the plugin module (`vhClearFields`). `-s tests/` is the start directory.
+  — Each `tests/<plugin>/` directory needs an empty `__init__.py` (and so does `tests/` itself) for Python 3.10 to recurse into subdirectories during discovery.
 
 One optional dependency: `PyYAML` is imported inside `ManifestTests` in `tests/vhClearFields/test_client_and_contracts.py`. The test self-skips when PyYAML is absent, but installing it gives full coverage. No other third-party packages are needed by the tests.
 
@@ -37,7 +38,9 @@ A separate `test.yml` workflow was added (`.github/workflows/test.yml`) with:
 
 - **Trigger:** `pull_request` targeting `main` + `push` to `main`.
   — Keeps `deploy.yml` unchanged (single responsibility: build + deploy stays on main only).
-- **Job `test`:** `ubuntu-latest`, install `pyyaml`, run `python3 -m unittest discover`.
+- **Job `test`:** `ubuntu-latest`, install `pyyaml`, run `python3 -m unittest discover -t . -s tests/ -p "test_*.py" -v`.
+  — `-t .` prevents the `tests/vhClearFields/` package from shadowing the plugin module during import.
+  — `tests/__init__.py` and `tests/vhClearFields/__init__.py` (empty) are required for Python 3.10 to recurse.
   — No `fetch-depth` override needed (tests do not read git history).
 
 **Why a separate workflow, not a new job in `deploy.yml`?** The deploy workflow only fires when `plugins/**` etc. change; a PR that only changes `tests/` or `.github/workflows/` would never trigger it. Keeping test and deploy separate also avoids re-deploying on test-only changes.
