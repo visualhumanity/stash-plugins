@@ -11,17 +11,19 @@ Plugins for [Stash](https://github.com/stashapp/stash), published as a self-host
 | `flexibleDateInput` | Flexible Date Input | UI | Patches Stash's date input field with an "Attempt to fix?" helper that normalises a wide range of date formats (YYYYMMDD, MM-DD-YYYY, DD/MM/YYYY, epoch, etc.) into the required YYYY-MM-DD format |
 | `autoSetPerformerGender` | Auto-set Performer Gender | Backend/hook | Sets a newly created performer's gender to a configured default if it doesn't already have one; fires on `Performer.Create.Post`, never overwrites an existing gender |
 | `vhClearFields` | VH - Clear Fields | UI + Backend/task | Adds a "Clear fields..." button to the scene list (selected scenes) and scene page; a two-step dialog picks fields and confirms, then a background task clears the chosen fields (title, URLs, date, director, performers, studio, details, stash IDs, studio code) on every selected scene |
+| `vhLinkTagsToPage` | VH - Link Tags To Page | UI | Tag links open the tag's detail page on the tab matching where the tag was clicked (scene to `/tags/<id>/scenes`, performer to `/tags/<id>/performers`, and so on) instead of a resource list with a tag filter; patches `TagLink` and replaces only its URL |
 
 ## Directory structure
 
-UI plugins (compiled JS/CSS):
+UI plugins (JS/CSS):
 
 ```
 plugins/
 └── <PluginName>/
     ├── <PluginName>.yml    # plugin manifest
-    ├── <PluginName>.js     # bundled JavaScript (compiled from TypeScript source)
-    └── <PluginName>.css    # optional stylesheet
+    ├── <PluginName>.js     # plugin script (see JavaScript conventions)
+    ├── <PluginName>.css    # optional stylesheet
+    └── README.md           # behavior, known limitations (flexibleDateInput predates this)
 ```
 
 Backend/hook plugins (Python, run by Stash's plugin subprocess protocol):
@@ -85,7 +87,7 @@ settings:
 
 ## JavaScript conventions
 
-The `.js` files are **compiled, bundled output** (built from TypeScript source with a bundler such as esbuild). Do not hand-edit the compiled output; edit the TypeScript source and rebuild.
+UI plugin JavaScript is **hand-written plain ES**, committed as-is: no TypeScript, no bundler, no build step (React via `React.createElement`). `vhClearFields` and `vhLinkTagsToPage` follow this. The exception is `flexibleDateInput.js`, which is esbuild output whose TypeScript source is not in this repo; edit it by hand with care, or rewrite it as plain ES.
 
 Plugins interact with Stash through the Plugin API exposed on `window.PluginApi`:
 
@@ -173,8 +175,8 @@ files:
 
 UI plugin:
 
-1. Create `plugins/<Name>/` with at minimum a `<Name>.yml` and `<Name>.js`.
-2. Build the JS from source before committing — only the compiled output is tracked.
+1. Create `plugins/<Name>/` with a `<Name>.yml`, a `<Name>.js` and a `README.md` (behavior, known limitations).
+2. Write the JS as plain ES in an IIFE (see JavaScript conventions); there is no build step.
 3. Follow the YAML conventions above (name, description, version, and ui sections are all required).
 4. Merge to `main` — CI builds and publishes automatically.
 
@@ -224,3 +226,17 @@ Usage:
     flush_dependencies()
 ```
 ```
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues, managed with the `gh` CLI using the visualhumanity token. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
