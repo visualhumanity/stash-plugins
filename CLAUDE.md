@@ -23,7 +23,7 @@ plugins/
     ├── <PluginName>.yml    # plugin manifest
     ├── <PluginName>.js     # plugin script (see JavaScript conventions)
     ├── <PluginName>.css    # optional stylesheet
-    └── README.md           # behavior, known limitations
+    └── README.md           # behavior, known limitations (flexibleDateInput predates this)
 ```
 
 Backend/hook plugins (Python, run by Stash's plugin subprocess protocol):
@@ -175,7 +175,7 @@ files:
 
 UI plugin:
 
-1. Create `plugins/<Name>/` with at minimum a `<Name>.yml` and `<Name>.js`.
+1. Create `plugins/<Name>/` with a `<Name>.yml`, a `<Name>.js` and a `README.md` (behavior, known limitations).
 2. Write the JS as plain ES in an IIFE (see JavaScript conventions); there is no build step.
 3. Follow the YAML conventions above (name, description, version, and ui sections are all required).
 4. Merge to `main` — CI builds and publishes automatically.
