@@ -145,7 +145,8 @@ over stdin from Stash itself and should use `stashapi`, not `py_common.graphql`.
 - **Triggers:** PRs into `main` or `develop`, pushes to those branches, and manual runs. PRs and pushes only start the workflow when they touch `plugins/**`, `themes/**`, `build_site.sh`, `tests/**` or `.github/workflows/**`.
 - **PRs:** `test` and `build` run against the PR's feature branch (its head commit). Nothing is deployed.
 - **Pushes and manual runs:** a `refs` job pins the current `main` and `develop` tips. `test` runs once per pinned commit, and `build` builds the same commits into `_site/main` and `_site/develop`, so everything deployed has passed the tests. A Pages artifact deploy replaces the whole site, so both branches are always rebuilt together.
-- **Deploy:** waits on `test` and `build`. It runs only from `main` or `develop`, and a push that changed nothing under `plugins/`, `themes/`, `build_site.sh` or `.github/workflows/` (for example a tests-only push) skips it. The `github-pages` environment allows deploys from `main` and `develop` only.
+- **Deploy:** waits on `refs`, `test` and `build`, and runs only from `main` or `develop`. Because every deploy publishes both branches, a push deploys if either branch has changes under `plugins/`, `themes/`, `build_site.sh` or `.github/workflows/` since that branch's last successful push run; otherwise (for example a tests-only push) it is skipped. Manual runs always deploy. The `github-pages` environment allows deploys from `main` and `develop` only.
+- **Queueing:** pushes and manual runs on `main` or `develop` share one concurrency group with `queue: max`, so they run one at a time in order and waiting runs are not cancelled. PR runs and manual runs on other branches never wait on it.
 
 Published version format: `<yml-version>-<git-short-hash>` (e.g. `1.0-a3f9c12`).
 

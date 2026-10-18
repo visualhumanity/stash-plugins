@@ -28,11 +28,17 @@ on:
 permissions:
   contents: read
 
-# Publishing runs one at a time, so a slower older run can't deploy over a newer one.
-# PR runs never deploy and get their own group.
+# Publishing runs (pushes and manual runs on main or develop) go one at a time, in order,
+# so a slower older run can't deploy over a newer one. queue: max keeps every waiting run
+# instead of cancelling all but the newest. Runs that can't deploy (PRs, manual runs on
+# other branches) get their own group.
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.run_id) || 'pages' }}
+  group: >-
+    ${{ github.event_name != 'pull_request'
+    && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    && 'pages' || format('nopublish-{0}', github.run_id) }}
   cancel-in-progress: false
+  queue: max
 
 jobs:
   # Pins the commits this run tests and builds, so everything deployed has been tested.
@@ -127,26 +133,36 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
+          MAIN_SHA: ${{ needs.refs.outputs.main }}
+          DEVELOP_SHA: ${{ needs.refs.outputs.develop }}
         run: |
-          publish=true
-          # Compare against the last successful run on this branch, not the push's
-          # "before" commit: a run that failed (for example on tests) published
-          # nothing, so its changes still need deploying.
-          # Only push runs count: PR runs never deploy. Manual runs, and branches
-          # with no usable previous push run, always deploy.
-          if [ "$EVENT" = push ]; then
-            last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy.yml \
-              --branch "$GITHUB_REF_NAME" --event push --status success --limit 1 \
-              --json headSha --jq '.[0].headSha // ""')
-            echo "Last successful run on $GITHUB_REF_NAME: ${last:-none}"
-            if [ -n "$last" ] && git cat-file -e "$last^{commit}" 2>/dev/null; then
-              changed=$(git diff --name-only "$last" "$GITHUB_SHA")
-              echo "Changed files:"
-              echo "$changed"
-              if ! grep -qE '^(plugins/|themes/|build_site\.sh$|\.github/workflows/)' <<<"$changed"; then
-                publish=false
+          # Every deploy publishes both branches, so deploy if either branch has
+          # published inputs that changed since its last successful push run.
+          # A run that failed published nothing, so its changes still count.
+          # Only push runs count as a baseline: PR runs never deploy.
+          # Manual runs, and a branch with no usable previous push run, always deploy.
+          publish=false
+          if [ "$EVENT" != push ]; then
+            publish=true
+          else
+            for branch in main develop; do
+              sha_var="${branch^^}_SHA"
+              sha="${!sha_var}"
+              last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy.yml \
+                --branch "$branch" --event push --status success --limit 1 \
+                --json headSha --jq '.[0].headSha // ""')
+              echo "$branch: pinned ${sha}, last successful push run ${last:-none}"
+              if [ -z "$last" ] || ! git cat-file -e "$last^{commit}" 2>/dev/null; then
+                publish=true
+                continue
               fi
-            fi
+              changed=$(git diff --name-only "$last" "$sha")
+              if grep -qE '^(plugins/|themes/|build_site\.sh$|\.github/workflows/)' <<<"$changed"; then
+                echo "$branch has published changes:"
+                echo "$changed"
+                publish=true
+              fi
+            done
           fi
           echo "publish=$publish"
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
