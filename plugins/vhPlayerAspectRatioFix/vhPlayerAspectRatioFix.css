@@ -1,0 +1,46 @@
+.video-js .vh-par-button {
+  cursor: pointer;
+  width: auto;
+  min-width: 3em;
+  padding: 0 0.4em;
+}
+
+.video-js .vh-par-label {
+  font-size: 1.3em;
+  line-height: 1;
+}
+
+.video-js .vh-par-menu {
+  background: rgba(43, 51, 63, 0.95);
+  border-radius: 4px;
+  bottom: 3.5em;
+  display: flex;
+  flex-direction: column;
+  padding: 0.3em 0;
+  position: absolute;
+  right: 4em;
+  z-index: 3;
+}
+
+.video-js .vh-par-item {
+  background: none;
+  border: 0;
+  color: #fff;
+  cursor: pointer;
+  font-size: 1.3em;
+  padding: 0.4em 1.2em 0.4em 2em;
+  position: relative;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.video-js .vh-par-item:hover,
+.video-js .vh-par-item:focus-visible {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.video-js .vh-par-item[aria-checked="true"]::before {
+  content: "\2713";
+  left: 0.6em;
+  position: absolute;
+}
