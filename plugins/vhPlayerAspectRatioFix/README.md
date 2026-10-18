@@ -26,6 +26,8 @@ The plugin drives Stash's own **Aspect Ratio** and **Scale** sliders on the scen
 - The browser already applies a file's pixel aspect ratio. An anamorphic 720x480 DVD rip with
   8:9 pixels already displays at 4:3, so the 4:3 preset leaves it unchanged.
 - The sliders take whole numbers only, so results are within about 0.4% of the target ratio.
+- Presets only change the Scale slider when Shrink to fit is on, so a Scale you set by hand is
+  kept. **Original** resets both sliders.
 - Moving to another scene resets both sliders to their defaults, so a preset never carries over.
   This also resets values you set by hand on the Filters tab.
 - If you move the Aspect Ratio or Scale slider by hand, the button and menu stop showing a preset
@@ -36,8 +38,9 @@ The plugin drives Stash's own **Aspect Ratio** and **Scale** sliders on the scen
 Settings > Plugins has one toggle:
 
 - **Shrink to fit**: scales a stretched picture down so it stays fully inside the player. Stash
-  plugin settings have no default, so it is off until you turn it on. When it is on, the scale is
-  recalculated when the player is resized or enters or leaves fullscreen.
+  plugin settings have no default, so it is off until you turn it on. A change takes effect the
+  next time you pick a preset, without reloading. When it is on, the scale is recalculated when
+  the player is resized or enters or leaves fullscreen.
 
 With Shrink to fit off, a preset that makes the picture taller relative to its width is cut off
 at the top and bottom in a landscape player, which includes most fullscreen use. For example,

@@ -1,30 +1,16 @@
-import json
 import os
-import shutil
-import subprocess
 import unittest
+
+from tests.vhPlayerAspectRatioFix.node_runner import PLUGIN_DIR, run_plugin
 
 try:
     import yaml
 except ImportError:  # pragma: no cover
     yaml = None
 
-PLUGIN_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "plugins", "vhPlayerAspectRatioFix")
-PLUGIN_JS = os.path.join(PLUGIN_DIR, "vhPlayerAspectRatioFix.js")
-
 
 def plugin_exports():
-    """Load the plugin script in Node and return its exported constants."""
-    node = shutil.which("node")
-    if node is None:
-        raise AssertionError("node is required to run the vhPlayerAspectRatioFix tests")
-    script = (
-        "const m = require(process.argv[1]);"
-        "process.stdout.write(JSON.stringify({ id: m.PLUGIN_ID, setting: m.SETTING_KEY,"
-        " presets: m.PRESETS.map((p) => p.label) }));"
-    )
-    out = subprocess.run([node, "-e", script, os.path.abspath(PLUGIN_JS)], check=True, capture_output=True, text=True)
-    return json.loads(out.stdout)
+    return run_plugin("{ id: plugin.PLUGIN_ID, setting: plugin.SETTING_KEY, presets: plugin.PRESETS.map((p) => p.label) }")
 
 
 class ContractTests(unittest.TestCase):

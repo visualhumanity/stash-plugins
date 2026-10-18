@@ -13,12 +13,10 @@
 .video-js .vh-par-menu {
   background: rgba(43, 51, 63, 0.95);
   border-radius: 4px;
-  bottom: 3.5em;
   display: flex;
   flex-direction: column;
   padding: 0.3em 0;
-  position: absolute;
-  right: 4em;
+  position: absolute; /* right and bottom are set next to the button when it opens */
   z-index: 3;
 }
 
