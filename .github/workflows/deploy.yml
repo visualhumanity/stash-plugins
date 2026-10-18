@@ -13,6 +13,7 @@ on:
       - 'themes/**'
       - 'build_site.sh'
       - 'tests/**'
+      - 'scripts/**'
       - '.github/workflows/**'
   pull_request:
     branches: [main, develop]
@@ -21,6 +22,7 @@ on:
       - 'themes/**'
       - 'build_site.sh'
       - 'tests/**'
+      - 'scripts/**'
       - '.github/workflows/**'
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -77,10 +79,33 @@ jobs:
             echo "test-shas=[\"$main\",\"$develop\"]" >> "$GITHUB_OUTPUT"
           fi
 
+  # PRs only: fails when the PR changes a plugin without raising its version, before the
+  # slower stages start. Compares the PR's feature branch head with the target branch tip.
+  version-check:
+    needs: refs
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: '0'
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Check plugin version bumps
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          # Fetch the target branch as it is now: the event's base.sha isn't updated when
+          # the base branch moves, only when the PR gets a new event.
+          git fetch --no-tags origin "+refs/heads/$BASE:refs/remotes/origin/$BASE"
+          python3 scripts/check_plugin_versions.py "origin/$BASE"
+
   # One job, not a matrix: a matrix job reports as "test (<sha>)", which changes every run,
   # so branch protection couldn't require it. This reports as plain "test".
   test:
-    needs: refs
+    needs: [refs, version-check]
+    # Runs when version-check passed or was skipped (pushes and manual runs)
+    if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -111,7 +136,8 @@ jobs:
           fi
 
   build:
-    needs: refs
+    needs: [refs, test]
+    if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -188,8 +214,10 @@ jobs:
 
   deploy:
     needs: [refs, build, test]
+    # !failure() && !cancelled(): the skipped version-check must not skip the deploy
     if: >-
-      github.event_name != 'pull_request'
+      !failure() && !cancelled()
+      && github.event_name != 'pull_request'
       && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
       && needs.build.outputs.publish == 'true'
     # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
