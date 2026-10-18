@@ -46,7 +46,7 @@ UI plugin:
 ```yaml
 name: Human-readable Name
 description: A short description shown in the Stash plugin list
-version: 1.0                  # semantic version; combined with git hash for the published version
+version: 1.0.0                 # semantic version; combined with git hash for the published version
 ui:
     javascript:
         - pluginName.js
@@ -61,7 +61,7 @@ Backend/hook plugin:
 ```yaml
 name: Human-readable Name
 description: A short description shown in the Stash plugin list
-version: 1.0
+version: 1.0.0
 # requires: PythonDepManager   # optional comment, see Dependency Management below
 exec:
   - python
@@ -148,7 +148,7 @@ over stdin from Stash itself and should use `stashapi`, not `py_common.graphql`.
 - **Deploy:** waits on `refs`, `test` and `build`, and runs only from `main` or `develop`. Because every deploy publishes both branches, a push deploys if either branch has changes under `plugins/`, `themes/`, `build_site.sh` or `.github/workflows/` since that branch's last successful push run; otherwise (for example a tests-only push) it is skipped. Manual runs always deploy. The `github-pages` environment allows deploys from `main` and `develop` only.
 - **Queueing:** pushes and manual runs on `main` or `develop` share one concurrency group with `queue: max`, so they run one at a time in order and waiting runs are not cancelled. PR runs and manual runs on other branches never wait on it.
 
-Published version format: `<yml-version>-<git-short-hash>` (e.g. `1.0-a3f9c12`).
+Published version format: `<yml-version>-<git-short-hash>` (e.g. `1.0.0-a3f9c12`).
 
 ### Artifact Structure
 

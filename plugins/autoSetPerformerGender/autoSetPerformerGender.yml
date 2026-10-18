@@ -1,6 +1,6 @@
 name: Auto-set Performer Gender
 description: Sets a newly created performer's gender to a configured default if it wasn't already set
-version: 1.0
+version: 1.0.0
 # requires: PythonDepManager
 exec:
   - python
