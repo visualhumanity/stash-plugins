@@ -77,24 +77,38 @@ jobs:
             echo "test-shas=[\"$main\",\"$develop\"]" >> "$GITHUB_OUTPUT"
           fi
 
+  # One job, not a matrix: a matrix job reports as "test (<sha>)", which changes every run,
+  # so branch protection couldn't require it. This reports as plain "test".
   test:
-    # Fixed name so branch protection can require "test". Matrix jobs otherwise report as
-    # "test (<sha>)"; the expression form stops GitHub appending the matrix value to the name.
-    name: ${{ 'test' }}
     needs: refs
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        sha: ${{ fromJSON(needs.refs.outputs.test-shas) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ matrix.sha }}
+          # Full history so every pinned commit is available for a worktree
+          fetch-depth: '0'
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Install optional test dependencies
         run: pip install pyyaml
-      - name: Run tests
-        run: python3 -m unittest discover -t . -s tests/ -p "test_*.py" -v
+      - name: Run tests on each pinned commit
+        env:
+          TEST_SHAS: ${{ needs.refs.outputs.test-shas }}
+        run: |
+          # Test every commit, then fail if any of them failed
+          failed=""
+          for sha in $(jq -r '.[]' <<<"$TEST_SHAS"); do
+            echo "::group::Tests at $sha"
+            git worktree add --detach "$RUNNER_TEMP/test-$sha" "$sha"
+            if ! (cd "$RUNNER_TEMP/test-$sha" && python3 -m unittest discover -t . -s tests/ -p "test_*.py" -v); then
+              failed="$failed $sha"
+            fi
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::Tests failed at:$failed"
+            exit 1
+          fi
 
   build:
     needs: refs
