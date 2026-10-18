@@ -1,6 +1,6 @@
 name: VH - Clear Fields
 description: Bulk-clears chosen metadata fields on selected scenes from a Clear fields button on the scene list and scene page. Runs as a background task.
-version: 1.0
+version: 1.0.0
 ui:
   javascript:
     - vhClearFields.js

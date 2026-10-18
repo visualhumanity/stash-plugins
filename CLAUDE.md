@@ -2,7 +2,7 @@
 
 Plugins for [Stash](https://github.com/stashapp/stash), published as a self-hosted source index via GitHub Pages. Two plugin flavors live here: **UI plugins** (client-side, patch the React frontend) and **backend/hook plugins** (server-side Python, triggered by Stash's post-mutation hooks).
 
-**Source index URL:** `https://visualhumanity.github.io/stash-plugins/main/index.yml`
+**Source index URLs:** `https://visualhumanity.github.io/stash-plugins/main/index.yml` (releases) and `https://visualhumanity.github.io/stash-plugins/develop/index.yml` (pre-release builds from `develop`, for testing on a test Stash instance)
 
 ## Plugins
 
@@ -46,7 +46,7 @@ UI plugin:
 ```yaml
 name: Human-readable Name
 description: A short description shown in the Stash plugin list
-version: 1.0                  # semantic version; combined with git hash for the published version
+version: 1.0.0                 # semantic version; combined with git hash for the published version
 ui:
     javascript:
         - pluginName.js
@@ -61,7 +61,7 @@ Backend/hook plugin:
 ```yaml
 name: Human-readable Name
 description: A short description shown in the Stash plugin list
-version: 1.0
+version: 1.0.0
 # requires: PythonDepManager   # optional comment, see Dependency Management below
 exec:
   - python
@@ -140,9 +140,15 @@ over stdin from Stash itself and should use `stashapi`, not `py_common.graphql`.
 
 ## Build and deployment
 
-`build_site.sh` packages each plugin directory into a zip and writes `index.yml`. The GitHub Actions workflow (`.github/workflows/deploy.yml`) triggers on pushes to **`main`** that touch `plugins/**`, `themes/**`, `build_site.sh`, or the workflow file itself, then deploys to GitHub Pages.
+`build_site.sh` packages each plugin directory into a zip and writes `index.yml`. The GitHub Actions workflow (`.github/workflows/deploy.yml`) has four jobs: `refs` (pins the commits to test and build), `test` (unit tests), `build` and `deploy`.
 
-Published version format: `<yml-version>-<git-short-hash>` (e.g. `1.0-a3f9c12`).
+- **Triggers:** PRs into `main` or `develop`, pushes to those branches, and manual runs. PRs and pushes only start the workflow when they touch `plugins/**`, `themes/**`, `build_site.sh`, `tests/**` or `.github/workflows/**`.
+- **PRs:** `test` and `build` run against the PR's feature branch (its head commit). Nothing is deployed.
+- **Pushes and manual runs:** a `refs` job pins the current `main` and `develop` tips. `test` runs once per pinned commit, and `build` builds the same commits into `_site/main` and `_site/develop`, so everything deployed has passed the tests. A Pages artifact deploy replaces the whole site, so both branches are always rebuilt together.
+- **Deploy:** waits on `refs`, `test` and `build`, and runs only from `main` or `develop`. Because every deploy publishes both branches, a push deploys if either branch has changes under `plugins/`, `themes/`, `build_site.sh` or `.github/workflows/` since that branch's last successful push run; otherwise (for example a tests-only push) it is skipped. Manual runs always deploy. The `github-pages` environment allows deploys from `main` and `develop` only.
+- **Queueing:** pushes and manual runs on `main` or `develop` share one concurrency group with `queue: max`, so they run one at a time in order and waiting runs are not cancelled. PR runs and manual runs on other branches never wait on it.
+
+Published version format: `<yml-version>-<git-short-hash>` (e.g. `1.0.0-a3f9c12`).
 
 ### Artifact Structure
 

@@ -1,6 +1,6 @@
 name: VH - Link Tags To Page
 description: Tag links open the tag's page on the tab matching where you clicked, instead of a filtered list.
-version: 1.0
+version: 1.0.0
 ui:
   javascript:
     - vhLinkTagsToPage.js
