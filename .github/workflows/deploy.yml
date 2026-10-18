@@ -35,20 +35,60 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  test:
+  # Pins the commits this run tests and builds, so everything deployed has been tested.
+  # On a PR: the feature branch head (never GitHub's merge commit).
+  # Otherwise: the current tips of main and develop, both of which get published.
+  refs:
     runs-on: ubuntu-latest
+    outputs:
+      main: ${{ steps.resolve.outputs.main }}
+      develop: ${{ steps.resolve.outputs.develop }}
+      test-shas: ${{ steps.resolve.outputs.test-shas }}
+    steps:
+      - name: Resolve commits
+        id: resolve
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            echo "test-shas=[\"$PR_HEAD\"]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          remote="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          main=$(git ls-remote "$remote" refs/heads/main | cut -f1)
+          develop=$(git ls-remote "$remote" refs/heads/develop | cut -f1)
+          if [ -z "$main" ] || [ -z "$develop" ]; then
+            echo "::error::Could not resolve main ($main) or develop ($develop)"
+            exit 1
+          fi
+          echo "main=$main develop=$develop"
+          echo "main=$main" >> "$GITHUB_OUTPUT"
+          echo "develop=$develop" >> "$GITHUB_OUTPUT"
+          if [ "$main" = "$develop" ]; then
+            echo "test-shas=[\"$main\"]" >> "$GITHUB_OUTPUT"
+          else
+            echo "test-shas=[\"$main\",\"$develop\"]" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    needs: refs
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sha: ${{ fromJSON(needs.refs.outputs.test-shas) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # On a PR, test the feature branch itself, not GitHub's merge commit
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ matrix.sha }}
       - name: Install optional test dependencies
         run: pip install pyyaml
       - name: Run tests
         run: python3 -m unittest discover -t . -s tests/ -p "test_*.py" -v
 
   build:
+    needs: refs
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -69,9 +109,14 @@ jobs:
 
       - name: Build main and develop
         if: github.event_name != 'pull_request'
+        env:
+          MAIN_SHA: ${{ needs.refs.outputs.main }}
+          DEVELOP_SHA: ${{ needs.refs.outputs.develop }}
         run: |
           for branch in main develop; do
-            git worktree add --detach "$RUNNER_TEMP/src-$branch" "origin/$branch"
+            # The same commits the test job tested
+            sha_var="${branch^^}_SHA"
+            git worktree add --detach "$RUNNER_TEMP/src-$branch" "${!sha_var}"
             # build_site.sh reads plugins/ and git history relative to the current directory
             (cd "$RUNNER_TEMP/src-$branch" && bash ./build_site.sh "$GITHUB_WORKSPACE/_site/$branch")
           done
@@ -109,7 +154,7 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
 
   deploy:
-    needs: [build, test]
+    needs: [refs, build, test]
     if: >-
       github.event_name != 'pull_request'
       && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')

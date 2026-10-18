@@ -140,11 +140,11 @@ over stdin from Stash itself and should use `stashapi`, not `py_common.graphql`.
 
 ## Build and deployment
 
-`build_site.sh` packages each plugin directory into a zip and writes `index.yml`. The GitHub Actions workflow (`.github/workflows/deploy.yml`) has three jobs: `test` (unit tests), `build` and `deploy`.
+`build_site.sh` packages each plugin directory into a zip and writes `index.yml`. The GitHub Actions workflow (`.github/workflows/deploy.yml`) has four jobs: `refs` (pins the commits to test and build), `test` (unit tests), `build` and `deploy`.
 
 - **Triggers:** PRs into `main` or `develop`, pushes to those branches, and manual runs. PRs and pushes only start the workflow when they touch `plugins/**`, `themes/**`, `build_site.sh`, `tests/**` or `.github/workflows/**`.
 - **PRs:** `test` and `build` run against the PR's feature branch (its head commit). Nothing is deployed.
-- **Pushes and manual runs:** `build` checks out both `main` and `develop` and builds them into `_site/main` and `_site/develop`. A Pages artifact deploy replaces the whole site, so both branches are always rebuilt together.
+- **Pushes and manual runs:** a `refs` job pins the current `main` and `develop` tips. `test` runs once per pinned commit, and `build` builds the same commits into `_site/main` and `_site/develop`, so everything deployed has passed the tests. A Pages artifact deploy replaces the whole site, so both branches are always rebuilt together.
 - **Deploy:** waits on `test` and `build`. It runs only from `main` or `develop`, and a push that changed nothing under `plugins/`, `themes/`, `build_site.sh` or `.github/workflows/` (for example a tests-only push) skips it. The `github-pages` environment allows deploys from `main` and `develop` only.
 
 Published version format: `<yml-version>-<git-short-hash>` (e.g. `1.0-a3f9c12`).
