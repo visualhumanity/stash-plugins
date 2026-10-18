@@ -78,6 +78,9 @@ jobs:
           fi
 
   test:
+    # Fixed name so branch protection can require "test". Matrix jobs otherwise report as
+    # "test (<sha>)"; the expression form stops GitHub appending the matrix value to the name.
+    name: ${{ 'test' }}
     needs: refs
     runs-on: ubuntu-latest
     strategy:
