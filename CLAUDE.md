@@ -46,7 +46,9 @@ UI plugin:
 ```yaml
 name: Human-readable Name
 description: A short description shown in the Stash plugin list
-version: 1.0.0                 # semantic version; combined with git hash for the published version
+# version: X.Y.Z, see Versioning; combined with git hash for the published version.
+# No comment after the value: build_site.sh would publish it as part of the version.
+version: 1.0.0
 ui:
     javascript:
         - pluginName.js
@@ -140,15 +142,18 @@ over stdin from Stash itself and should use `stashapi`, not `py_common.graphql`.
 
 ## Build and deployment
 
-`build_site.sh` packages each plugin directory into a zip and writes `index.yml`. The GitHub Actions workflow (`.github/workflows/deploy.yml`) has four jobs: `refs` (pins the commits to test and build), `test` (unit tests), `build` and `deploy`.
+`build_site.sh` packages each plugin directory into a zip and writes `index.yml`. The GitHub Actions workflow (`.github/workflows/deploy.yml`) has five jobs, each waiting for the one before: `refs` (pins the commits to test and build), `version-check` (PRs only, see Versioning), `test` (unit tests), `build` and `deploy`. A failure at any stage stops all later stages.
 
-- **Triggers:** PRs into `main` or `develop`, pushes to those branches, and manual runs. PRs and pushes only start the workflow when they touch `plugins/**`, `themes/**`, `build_site.sh`, `tests/**` or `.github/workflows/**`.
-- **PRs:** `test` and `build` run against the PR's feature branch (its head commit). Nothing is deployed.
-- **Pushes and manual runs:** a `refs` job pins the current `main` and `develop` tips. `test` runs once per pinned commit, and `build` builds the same commits into `_site/main` and `_site/develop`, so everything deployed has passed the tests. A Pages artifact deploy replaces the whole site, so both branches are always rebuilt together.
+- **Triggers:** PRs into `main` or `develop`, pushes to those branches, and manual runs. PRs and pushes only start the workflow when they touch `plugins/**`, `themes/**`, `build_site.sh`, `tests/**`, `scripts/**` or `.github/workflows/**`.
+- **PRs:** `version-check`, then `test`, then `build`, all against the PR's feature branch (its head commit). Nothing is deployed.
+- **Pushes and manual runs:** `version-check` is skipped. A `refs` job pins the current `main` and `develop` tips. `test` runs once per pinned commit (one job, worktree per commit, so the check always reports as `test`), and `build` builds the same commits into `_site/main` and `_site/develop`, so everything deployed has passed the tests. A Pages artifact deploy replaces the whole site, so both branches are always rebuilt together.
 - **Deploy:** waits on `refs`, `test` and `build`, and runs only from `main` or `develop`. Because every deploy publishes both branches, a push deploys if either branch has changes under `plugins/`, `themes/`, `build_site.sh` or `.github/workflows/` since that branch's last successful push run; otherwise (for example a tests-only push) it is skipped. Manual runs always deploy. The `github-pages` environment allows deploys from `main` and `develop` only.
 - **Queueing:** pushes and manual runs on `main` or `develop` share one concurrency group with `queue: max`, so they run one at a time in order and waiting runs are not cancelled. PR runs and manual runs on other branches never wait on it.
 
 Published version format: `<yml-version>-<git-short-hash>` (e.g. `1.0.0-a3f9c12`).
+
+- **Required checks:** `main` requires `version-check`, `test` and `build`. Admins can bypass, so this is friction, not a lock. `develop` is unprotected.
+- **Never merge a PR with a failing check**, into either branch, even where GitHub would allow it.
 
 ### Artifact Structure
 
@@ -177,14 +182,34 @@ files:
 - DateFromFilename.py
 ```
 
+## Versioning
+
+Every plugin's `version:` is plain SemVer 2.0 core, `X.Y.Z` (no leading zeros, no `-rc.1` or `+build` tags). The `version-check` job enforces these rules on every PR; run the same check locally before opening or updating a PR:
+
+```bash
+git fetch origin
+python3 scripts/check_plugin_versions.py origin/<target>   # origin/develop or origin/main
+```
+
+- **Bump rule:** if a PR changes any non-exempt file in `plugins/<id>/`, that plugin's version must be strictly greater than on the target branch tip. Skipping numbers is fine. Plugins the PR doesn't change are not checked.
+- **Exempt files** (no bump needed): extension `.md` or `.txt`, or a file named `README` or `CHANGELOG` with any extension or none. Case-insensitive, any depth. They still change the published hash suffix (`1.1.0-aaaaaaa` becomes `1.1.0-bbbbbbb`). Everything else needs a bump, including CSS, images and data files.
+- **Bump level:**
+  - **patch:** bug fix or internal change with no new behavior.
+  - **minor:** new feature, setting or UI element that is backward compatible.
+  - **major:** breaking change: a removed or renamed setting, a changed hook or task contract, or anything the user must act on.
+- **One bump per PR**, not per commit. The check compares against the target tip at the time it runs, and nothing re-runs it when the target moves. If another PR touching the same plugin merged after your last run, re-run the check (or push) before merging; if it now fails, rebase and bump again.
+- **New plugins** start at `0.1.0` and stay `0.Y.Z` on `develop`. A plugin new to `main` must be exactly `1.0.0`: in the `develop` to `main` release PR, commit the promotion to `1.0.0` on `develop`.
+- **Deleted plugins** pass. A renamed folder counts as a new plugin.
+- The checker reads `version:` the way `build_site.sh` does (first `version:` line), so don't put a comment after the value.
+
 ## Adding a new plugin
 
 UI plugin:
 
 1. Create `plugins/<Name>/` with a `<Name>.yml`, a `<Name>.js` and a `README.md` (behavior, known limitations).
 2. Write the JS as plain ES in an IIFE (see JavaScript conventions); there is no build step.
-3. Follow the YAML conventions above (name, description, version, and ui sections are all required).
-4. Merge to `main` — CI builds and publishes automatically.
+3. Follow the YAML conventions above (name, description, version, and ui sections are all required). Start at `version: 0.1.0` (see Versioning).
+4. Merge to `develop` to publish a pre-release build, then release to `main` with the version promoted to `1.0.0`.
 
 Backend/hook plugin:
 
@@ -192,8 +217,8 @@ Backend/hook plugin:
    settings and behavior.
 2. Follow the YAML and Python conventions above — `exec`/`interface: raw`, a `hooks:` block with
    the relevant `triggeredBy` entries, and `# requires: PythonDepManager` if the script imports
-   anything beyond the stdlib.
-3. Merge to `main` — CI builds and publishes automatically.
+   anything beyond the stdlib. Start at `version: 0.1.0` (see Versioning).
+3. Merge to `develop` to publish a pre-release build, then release to `main` with the version promoted to `1.0.0`.
 
 ## Dependency Management
 
