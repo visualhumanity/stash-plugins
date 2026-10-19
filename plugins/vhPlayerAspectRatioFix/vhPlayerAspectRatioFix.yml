@@ -1,6 +1,6 @@
 name: VH - Player Aspect Ratio Fix
 description: Adds an aspect ratio button to the scene player's control bar that stretches the playing picture to 16:9, 4:3 or 1:1. Playback only; files and metadata are not changed.
-version: 0.1.1
+version: 1.0.0
 ui:
   javascript:
     - vhPlayerAspectRatioFix.js
