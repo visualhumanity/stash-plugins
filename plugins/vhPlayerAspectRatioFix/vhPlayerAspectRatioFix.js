@@ -215,7 +215,9 @@
     button.el().setAttribute("aria-expanded", "false");
     const fullscreenToggle = controlBar.getChild("fullscreenToggle");
     if (fullscreenToggle) controlBar.el().insertBefore(button.el(), fullscreenToggle.el());
-    button.on("click", (event) => {
+    // On touch screens video.js cancels the click and fires "tap" instead (as Stash's own
+    // control-bar buttons expect), so listen for both.
+    button.on(["tap", "click"], (event) => {
       event.stopPropagation();
       if (menu) closeMenu();
       else openMenu();
@@ -266,8 +268,11 @@
     else if (state.active && !stillActive()) setActive(null);
   }
 
-  document.addEventListener("click", (event) => {
-    if (menu && !menu.contains(event.target)) closeMenu();
+  // pointerdown rather than click: video.js cancels the click after a touch on the player.
+  document.addEventListener("pointerdown", (event) => {
+    if (!menu || menu.contains(event.target)) return;
+    if (button && button.el().contains(event.target)) return; // the button toggles the menu itself
+    closeMenu();
   });
   // Capture phase: the player's own key handling stops Escape before it reaches the document.
   document.addEventListener(
