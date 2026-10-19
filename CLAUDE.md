@@ -12,6 +12,7 @@ Plugins for [Stash](https://github.com/stashapp/stash), published as a self-host
 | `autoSetPerformerGender` | Auto-set Performer Gender | Backend/hook | Sets a newly created performer's gender to a configured default if it doesn't already have one; fires on `Performer.Create.Post`, never overwrites an existing gender |
 | `vhClearFields` | VH - Clear Fields | UI + Backend/task | Adds a "Clear fields..." button to the scene list (selected scenes) and scene page; a two-step dialog picks fields and confirms, then a background task clears the chosen fields (title, URLs, date, director, performers, studio, details, stash IDs, studio code) on every selected scene |
 | `vhLinkTagsToPage` | VH - Link Tags To Page | UI | Tag links open the tag's detail page on the tab matching where the tag was clicked (scene to `/tags/<id>/scenes`, performer to `/tags/<id>/performers`, and so on) instead of a resource list with a tag filter; patches `TagLink` and replaces only its URL |
+| `vhPlayerAspectRatioFix` | VH - Player Aspect Ratio Fix | UI | Adds an aspect ratio button to the scene player's control bar (16:9, 4:3, 1:1, Original) that stretches the playing picture by driving the Filters tab's Aspect Ratio and Scale sliders; optional Shrink to fit setting; resets on every scene change, changes nothing stored |
 
 ## Directory structure
 
