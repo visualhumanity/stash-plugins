@@ -1,4 +1,5 @@
 import os
+import re
 import unittest
 
 from tests.vhPlayerAspectRatioFix.node_runner import PLUGIN_DIR, run_plugin
@@ -24,6 +25,12 @@ class ContractTests(unittest.TestCase):
     def test_plugin_id_matches_manifest_filename(self):
         self.assertEqual(self.exports["id"], "vhPlayerAspectRatioFix")
         self.assertTrue(os.path.exists(os.path.join(PLUGIN_DIR, self.exports["id"] + ".yml")))
+
+    def test_button_responds_to_touch_taps(self):
+        # video.js cancels the click after a touch and fires "tap" on its components instead
+        with open(os.path.join(PLUGIN_DIR, "vhPlayerAspectRatioFix.js"), encoding="utf-8") as handle:
+            js = handle.read()
+        self.assertRegex(js, re.compile(r'button\.on\(\s*\[\s*"tap",\s*"click"\s*\]'))
 
     @unittest.skipIf(yaml is None, "PyYAML not installed")
     def test_manifest_declares_the_shrink_to_fit_setting_the_script_reads(self):
