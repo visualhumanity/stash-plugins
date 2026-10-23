@@ -1,0 +1,45 @@
+name: VH - Identify Images
+description: Identify for images. Scrapes images under chosen folders with an image scraper and applies the results using Identify's ignore, merge and overwrite rules.
+version: 0.1.0
+exec:
+  - python
+  - "{pluginDir}/vhIdentifyImages.py"
+interface: raw
+tasks:
+  - name: Identify images
+    description: Scrapes every image under the configured folders with the configured scraper and applies the results using the field options. Turn on Dry run to see the changes without writing them.
+    defaultArgs:
+      mode: identify
+settings:
+  scraperId:
+    displayName: Scraper ID
+    description: ID of the image scraper to run on each image. Empty means GalleryDlReddit.
+    type: STRING
+  folderPrefixes:
+    displayName: Folder prefixes
+    description: "Only images whose file path starts with one of these are processed. Separate several with |, for example /data/example/reddit/|/data/example/twitter/. Empty means all images."
+    type: STRING
+  fieldTitle:
+    displayName: Title option
+    description: ignore, merge or overwrite. Empty means merge (set only when the image has no title).
+    type: STRING
+  fieldCode:
+    displayName: Code option
+    description: ignore, merge or overwrite. Empty means merge (set only when the image has no code).
+    type: STRING
+  fieldDetails:
+    displayName: Details option
+    description: ignore, merge or overwrite. Empty means merge (set only when the image has no details).
+    type: STRING
+  fieldDate:
+    displayName: Date option
+    description: ignore, merge or overwrite. Empty means merge (set only when the image has no date).
+    type: STRING
+  dryRun:
+    displayName: Dry run
+    description: Log each image's changes (field, old value, new value) without writing anything.
+    type: BOOLEAN
+  imageLimit:
+    displayName: Image limit
+    description: Stop after this many images. 0 or empty means no limit.
+    type: NUMBER
