@@ -1,6 +1,6 @@
 # VH - Identify Images
 
-Does for images what Stash's Identify task does for scenes. A task goes through every image under the configured folders, runs an image scraper on each one (the same scrape as the image's Scrape menu), and applies the result using Identify's per-field ignore, merge and overwrite rules.
+Does for images what Stash's Identify task does for scenes. A task goes through every image under the configured folders, runs an image scraper on each one (the same scrape as the image's Scrape menu), and applies the result using Identify's per-field ignore, merge and overwrite rules. An optional scan hook does the same for each new image as Stash's scan finds it.
 
 **Take a database backup before the first full run.** An overwrite option applied to thousands of images cannot be undone from the plugin. Try the settings first with **Dry run** on and a small **Image limit**.
 
@@ -18,6 +18,14 @@ processed 120, updated 95, unchanged 20, no result 4, failed 1, performers creat
 - **failed**: the scrape or the update gave an error. The error is logged with the image ID and path, and the run carries on with the next image.
 
 Each scrape starts the scraper's own process, so a first run over a large library can take hours.
+
+## Scrape on scan
+
+With **Scrape on scan** on, each new image that a scan adds is scraped and applied right away, exactly as the task would handle it: same scraper, folder prefixes, skip organized, dry run, field options and create options. An image outside the folder prefixes (or organized, with Skip organized images on) is left alone.
+
+It is off by default. Stash runs the plugin once for every new image a scan adds, and waits for it before going on, and each scrape also starts the scraper's own process. Turning it on before the first bulk run would make that first scan of a large library much slower. Run the **Identify images** task first, then turn Scrape on scan on so later downloads are handled as they are scanned. While it is off, each new image only costs the plugin reading its settings.
+
+The plugin's own image updates fire Stash's `Image.Update.Post` hook, not `Image.Create.Post`, so the plugin never triggers itself.
 
 ## Settings
 
@@ -41,6 +49,7 @@ Stash plugin settings have no stored defaults: an empty setting means the defaul
 | Skip single-name performers | on/off | off | Do not create a performer whose name has no space and who has no disambiguation. |
 | Set organized | on/off | off | Also mark an image organized when it is updated. See organized. |
 | Skip organized images | on/off | off | Leave organized images out of the run, so reruns skip finished images. They do not count toward the image limit. |
+| Scrape on scan | on/off | off | Scrape each new image as Stash's scan finds it. See scrape on scan. |
 | Dry run | on/off | off | Compute and log every change without writing anything. |
 | Image limit | number | 0 (no limit) | Stop after this many images, in path order. |
 
@@ -111,6 +120,7 @@ The studio follows the single-value rule: `merge` sets it only when the image ha
 | Set organized | Same, but only for images that change (see organized) |
 | Default strategy for an unset field: merge | Same |
 | Paths to process | Folder prefixes |
+| (no equivalent; Identify can run after a scan as a separate task) | Scrape on scan |
 
 ## Known limitations
 

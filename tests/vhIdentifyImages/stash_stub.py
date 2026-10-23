@@ -201,6 +201,9 @@ class FakeStash:
         image_filter = variables.get("image_filter") or {}
         find_filter = variables.get("filter") or {}
         matches = sorted(self.images.values(), key=lambda img: _path(img) or "")
+        if variables.get("ids") is not None:
+            ids = {str(i) for i in variables["ids"]}
+            matches = [img for img in matches if img["id"] in ids]
         path = image_filter.get("path")
         if path:
             assert path["modifier"] == "MATCHES_REGEX", path
@@ -228,11 +231,20 @@ class FakeStash:
     def mutations(self):
         return [b for b in (r["body"] for r in self.requests) if b["query"].lstrip().startswith("mutation")]
 
+    def operations(self):
+        """Operation names of every request, in order."""
+        return [r["body"]["query"].split("(")[0].split("{")[0].split()[-1] for r in self.requests]
+
     def creates(self, mutation):
         return [b["variables"]["input"] for b in self.calls(mutation)]
 
     def updates(self):
         return [b["variables"]["input"] for b in self.calls("imageUpdate")]
+
+
+def hook_args(image_id, hook_type="Image.Create.Post"):
+    """Args as Stash sends them for a post hook fired by a scan (input is null)."""
+    return {"hookContext": {"id": int(image_id), "type": hook_type, "input": None}}
 
 
 def run_plugin(stub, args=None, connection=None):

@@ -5,6 +5,11 @@ exec:
   - python
   - "{pluginDir}/vhIdentifyImages.py"
 interface: raw
+hooks:
+  - name: Scrape new images
+    description: When Scrape on scan is on, scrapes each new image found by a scan and applies the results like the Identify images task.
+    triggeredBy:
+      - Image.Create.Post
 tasks:
   - name: Identify images
     description: Scrapes every image under the configured folders with the configured scraper and applies the results using the field options. Turn on Dry run to see the changes without writing them.
@@ -74,6 +79,10 @@ settings:
   skipOrganized:
     displayName: Skip organized images
     description: Leave organized images out of the run. They do not count toward the image limit.
+    type: BOOLEAN
+  scrapeOnScan:
+    displayName: Scrape on scan
+    description: Scrape each new image as a scan finds it, with the same settings as the task. Off by default; turn it on after the first bulk run.
     type: BOOLEAN
   dryRun:
     displayName: Dry run

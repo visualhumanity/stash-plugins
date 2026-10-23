@@ -8,7 +8,7 @@ and the log that comes back.
 import os
 import unittest
 
-from .stash_stub import PLUGIN_DIR, FakeStash, image, image_scraper, run_plugin
+from .stash_stub import PLUGIN_DIR, FakeStash, hook_args, image, image_scraper, run_plugin
 
 try:
     import yaml
@@ -918,6 +918,138 @@ class OrganizedTests(unittest.TestCase):
                 self.assertEqual(stub.mutations(), [])
 
 
+class ScanHookTests(unittest.TestCase):
+    SCRAPE = {
+        "title": "Example Image",
+        "urls": ["https://example.com/post/1"],
+        "performers": [{"stored_id": None, "name": "u_example_user"}],
+        "tags": [{"stored_id": "9", "name": "Example Tag"}],
+        "studio": {"stored_id": None, "name": "r_ExampleSub", "parent": {"stored_id": None, "name": "Reddit"}},
+    }
+    ON = {
+        "scrapeOnScan": True,
+        "createMissingPerformers": True,
+        "createMissingStudios": True,
+        "setOrganized": True,
+        "folderPrefixes": SUB,
+    }
+
+    def run_hook(self, settings, images, image_id="1", hook_type="Image.Create.Post", scrapes=None):
+        scrapes = {str(image_id): [self.SCRAPE]} if scrapes is None else scrapes
+        with FakeStash(images, settings=settings, scrapes=scrapes) as stub:
+            log = run_plugin(stub, args=hook_args(image_id, hook_type))
+        return stub, log
+
+    def side_effects(self, stub):
+        """Scrape and write calls, with their inputs."""
+        return [
+            (r["body"]["query"].split("(")[0].split()[-1], r["body"]["variables"])
+            for r in stub.requests
+            if "scrapeSingleImage" in r["body"]["query"] or r["body"]["query"].lstrip().startswith("mutation")
+        ]
+
+    def test_off_by_default_reads_settings_only(self):
+        for settings in ({}, None, {"scrapeOnScan": False, "folderPrefixes": SUB}):
+            with self.subTest(settings=settings):
+                stub, _ = self.run_hook(settings, [image(1, SUB + "1.jpg")])
+                self.assertEqual(stub.operations(), ["PluginConfiguration"])
+
+    def test_on_makes_the_same_calls_as_the_task_for_that_image(self):
+        img = image(1, SUB + "1.jpg", performers=[linked("5", "Existing")])
+        hook_stub, _ = self.run_hook(self.ON, [img])
+        with FakeStash([img], settings=self.ON, scrapes={"1": [self.SCRAPE]}) as task_stub:
+            run_plugin(task_stub)
+        self.assertTrue(self.side_effects(hook_stub))
+        self.assertEqual(self.side_effects(hook_stub), self.side_effects(task_stub))
+        self.assertEqual(
+            hook_stub.updates()[-1],
+            {
+                "id": "1",
+                "title": "Example Image",
+                "urls": ["https://example.com/post/1"],
+                "performer_ids": ["5", "103"],
+                "tag_ids": ["9"],
+                "studio_id": "102",
+                "organized": True,
+            },
+        )
+
+    def test_only_the_hook_image_is_processed(self):
+        images = [image(1, SUB + "1.jpg"), image(2, SUB + "2.jpg")]
+        stub, _ = self.run_hook({"scrapeOnScan": True}, images, image_id="2", scrapes={"1": [self.SCRAPE], "2": [self.SCRAPE]})
+        self.assertEqual(stub.scraped_ids(), ["2"])
+        self.assertEqual([u["id"] for u in stub.updates()], ["2"])
+
+    def test_image_outside_the_prefixes_is_left_alone(self):
+        images = [image(1, OTHER + "1.jpg"), image(2, "/data/example/reddit/r_ExampleSubTwo/2.jpg")]
+        for image_id in ("1", "2"):
+            with self.subTest(image_id=image_id):
+                stub, _ = self.run_hook(self.ON, images, image_id=image_id)
+                self.assertEqual(self.side_effects(stub), [])
+
+    def test_prefix_matching_is_the_same_as_the_task(self):
+        # literal, case-sensitive, from the start of the full path
+        images = [
+            image(1, "/data/example/set (1) [a].b/x.jpg"),
+            image(2, "/data/example/set 1 a.b/y.jpg"),
+            image(3, "/DATA/example/set (1) [a].b/z.jpg"),
+            image(4, None),
+        ]
+        settings = {"scrapeOnScan": True, "folderPrefixes": "/data/example/set (1) [a].b/"}
+        scrapes = {str(i): [{"title": "Example Image"}] for i in range(1, 5)}
+        hook_scraped = []
+        for image_id in ("1", "2", "3", "4"):
+            stub, _ = self.run_hook(settings, images, image_id=image_id, scrapes=scrapes)
+            hook_scraped += stub.scraped_ids()
+        with FakeStash(images, settings={"folderPrefixes": settings["folderPrefixes"]}, scrapes=scrapes) as stub:
+            run_plugin(stub)
+        self.assertEqual(hook_scraped, ["1"])
+        self.assertEqual(stub.scraped_ids(), hook_scraped)
+
+    def test_organized_image_is_left_alone_with_skip_organized(self):
+        stub, _ = self.run_hook(dict(self.ON, skipOrganized=True), [image(1, SUB + "1.jpg", organized=True)])
+        self.assertEqual(self.side_effects(stub), [])
+
+    def test_organized_image_is_processed_without_skip_organized(self):
+        stub, _ = self.run_hook({"scrapeOnScan": True}, [image(1, SUB + "1.jpg", organized=True)])
+        self.assertEqual(stub.scraped_ids(), ["1"])
+
+    def test_dry_run_applies_to_the_hook(self):
+        stub, log = self.run_hook(dict(self.ON, dryRun=True), [image(1, SUB + "1.jpg")])
+        self.assertEqual(stub.mutations(), [])
+        self.assertEqual(stub.scraped_ids(), ["1"])
+        text = joined(log)
+        self.assertIn("would create performer 'u_example_user'", text)
+        self.assertIn("title: None -> 'Example Image'", text)
+
+    def test_unscoped_hook_uses_the_minimum_queries(self):
+        stub, _ = self.run_hook({"scrapeOnScan": True}, [image(1, SUB + "1.jpg")], scrapes={"1": [{"title": "Example Image"}]})
+        self.assertEqual(
+            stub.operations(), ["PluginConfiguration", "ListImageScrapers", "FindImage", "ScrapeSingleImage", "ImageUpdate"]
+        )
+
+    def test_update_hook_events_do_nothing(self):
+        # the plugin's own imageUpdate fires Image.Update.Post, which must not loop back
+        stub, _ = self.run_hook(self.ON, [image(1, SUB + "1.jpg")], hook_type="Image.Update.Post")
+        self.assertEqual(stub.requests, [])
+
+    def test_invalid_settings_stop_the_hook(self):
+        stub, log = self.run_hook({"scrapeOnScan": True, "fieldTitle": "replace"}, [image(1, SUB + "1.jpg")])
+        self.assertIn("fieldTitle", joined(log, "e"))
+        self.assertEqual(self.side_effects(stub), [])
+
+    def test_unknown_scraper_stops_the_hook(self):
+        stub, log = self.run_hook({"scrapeOnScan": True, "scraperId": "MissingScraper"}, [image(1, SUB + "1.jpg")])
+        self.assertIn("scraperId", joined(log, "e"))
+        self.assertEqual(self.side_effects(stub), [])
+
+    def test_failures_are_logged(self):
+        with FakeStash([image(1, SUB + "1.jpg")], settings={"scrapeOnScan": True}, scrape_errors={"1"}) as stub:
+            log = run_plugin(stub, args=hook_args("1"))
+        self.assertIn("scraper failed for this image", joined(log, "e"))
+        self.assertEqual(stub.mutations(), [])
+
+
 class DryRunTests(unittest.TestCase):
     def test_dry_run_sends_no_update_and_logs_old_and_new_values(self):
         img = image(1, SUB + "a.jpg", title="Old Title")
@@ -1046,13 +1178,6 @@ class EntryPointTests(unittest.TestCase):
         self.assertEqual(stub.requests, [])
         self.assertTrue(messages(log, "e"))
 
-    def test_hook_events_are_ignored_for_now(self):
-        args = {"hookContext": {"type": "Image.Create.Post", "id": "1"}}
-        with FakeStash([image(1, SUB + "a.jpg")], settings={}) as stub:
-            run_plugin(stub, args=args)
-        self.assertEqual(stub.calls("scrapeSingleImage"), [])
-        self.assertEqual(stub.calls("imageUpdate"), [])
-
     def test_session_cookie_is_sent_on_every_request(self):
         scrapes = {"1": [{"title": "Example Image"}]}
         with FakeStash([image(1, SUB + "a.jpg")], settings={}, scrapes=scrapes) as stub:
@@ -1094,6 +1219,11 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(self.manifest["exec"], ["python", "{pluginDir}/vhIdentifyImages.py"])
         self.assertTrue(self.manifest["description"])
 
+    def test_one_hook_on_image_create(self):
+        hooks = self.manifest["hooks"]
+        self.assertEqual(len(hooks), 1)
+        self.assertEqual(hooks[0]["triggeredBy"], ["Image.Create.Post"])
+
     def test_one_task_running_the_identify_mode(self):
         tasks = self.manifest["tasks"]
         self.assertEqual(len(tasks), 1)
@@ -1117,6 +1247,7 @@ class ManifestTests(unittest.TestCase):
             "skipSingleNamePerformers": "BOOLEAN",
             "setOrganized": "BOOLEAN",
             "skipOrganized": "BOOLEAN",
+            "scrapeOnScan": "BOOLEAN",
             "dryRun": "BOOLEAN",
             "imageLimit": "NUMBER",
         }

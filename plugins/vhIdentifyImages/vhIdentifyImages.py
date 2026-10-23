@@ -29,6 +29,7 @@ from identify_settings import SettingsError, parse_settings  # noqa: E402
 
 PLUGIN_ID = "vhIdentifyImages"
 TASK_MODE = "identify"
+HOOK_TYPE = "Image.Create.Post"
 
 
 class Log:
@@ -41,6 +42,9 @@ class Log:
 
     def info(self, message):
         self._emit("i", f"{PLUGIN_ID}: {message}")
+
+    def debug(self, message):
+        self._emit("d", f"{PLUGIN_ID}: {message}")
 
     def error(self, message):
         self._emit("e", f"{PLUGIN_ID}: {message}")
@@ -168,9 +172,14 @@ def resolve_studio(stash, settings, changes, state, label, log):
         del changes["studio"]
 
 
+def image_label(image_id, path):
+    return f"image {image_id} ({path or 'no file'})"
+
+
 def process_image(stash, settings, image_id, label, state, log):
     """Scrape and apply one image. Returns 'updated', 'unchanged' or 'no result'."""
     image = stash.find_image(image_id)
+    label = label or image_label(image_id, image_path(image))
     scraped = scrape(stash, settings.sources, image_id)
     if scraped is None:
         log.info(f"{label}: no scrape result")
@@ -217,7 +226,7 @@ def run_task(stash, settings, log):
     state = RunState()
     total = len(images)
     for index, (image_id, path) in enumerate(images, start=1):
-        label = f"image {image_id} ({path or 'no file'})"
+        label = image_label(image_id, path)
         try:
             outcome = process_image(stash, settings, image_id, label, state, log)
         except Exception as exc:
@@ -236,26 +245,64 @@ def run_task(stash, settings, log):
     return state
 
 
-def main():
-    log = Log()
-    json_input = json.loads(sys.stdin.read())
-    args = json_input.get("args") or {}
-    if args.get("hookContext"):
+def run_hook(stash, settings, image_id, log):
+    """Scan hook: run one new image through the same filters and steps as the task."""
+    if settings.folder_prefixes or settings.skip_organized:
+        eligible = stash.find_images(settings.folder_prefixes, 0, settings.skip_organized, ids=[image_id])
+        if not eligible:
+            log.debug(f"image {image_id}: outside the folder prefixes or organized; skipped")
+            return
+    problem = check_sources(stash, settings.sources)
+    if problem:
+        log.error(f"refusing to run, invalid settings: {problem}")
         return
-    if args.get("mode") != TASK_MODE:
-        log.error("unrecognised task mode; nothing to do")
-        return
+    try:
+        process_image(stash, settings, image_id, None, RunState(), log)
+    except Exception as exc:
+        log.error(f"image {image_id} failed: {exc}")
 
-    stash = StashClient(json_input.get("server_connection") or {})
+
+def load_settings(stash, log):
     try:
         raw_settings = stash.plugin_settings(PLUGIN_ID)
     except Exception as exc:
         log.error(f"could not read plugin settings: {exc}")
-        return
+        return None, None
     try:
-        settings = parse_settings(raw_settings)
+        return raw_settings, parse_settings(raw_settings)
     except SettingsError as exc:
-        log.error(f"refusing to run, invalid settings: {exc}")
+        return raw_settings, exc
+
+
+def main():
+    log = Log()
+    json_input = json.loads(sys.stdin.read())
+    args = json_input.get("args") or {}
+    hook = args.get("hookContext")
+    if hook:
+        # Only new images; the plugin's own updates fire Image.Update.Post
+        if hook.get("type") != HOOK_TYPE or hook.get("id") is None:
+            return
+    elif args.get("mode") != TASK_MODE:
+        log.error("unrecognised task mode; nothing to do")
+        return
+
+    stash = StashClient(json_input.get("server_connection") or {})
+    raw_settings, settings = load_settings(stash, log)
+    if hook and (raw_settings or {}).get("scrapeOnScan") is not True:
+        # off: a scan fires this for every new image, so stay quiet and cheap
+        return
+    if settings is None:
+        return
+    if isinstance(settings, SettingsError):
+        log.error(f"refusing to run, invalid settings: {settings}")
+        return
+
+    if hook:
+        try:
+            run_hook(stash, settings, str(hook["id"]), log)
+        except Exception as exc:
+            log.error(f"image {hook['id']} failed: {exc}")
         return
 
     try:

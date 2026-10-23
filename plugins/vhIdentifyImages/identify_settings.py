@@ -39,6 +39,7 @@ class Settings:
     skip_single_name_performers: bool
     set_organized: bool
     skip_organized: bool
+    scrape_on_scan: bool
     dry_run: bool
     image_limit: int
 
@@ -129,6 +130,7 @@ def parse_settings(raw):
         skip_single_name_performers=_boolean(raw, "skipSingleNamePerformers", errors),
         set_organized=_boolean(raw, "setOrganized", errors),
         skip_organized=_boolean(raw, "skipOrganized", errors),
+        scrape_on_scan=_boolean(raw, "scrapeOnScan", errors),
         dry_run=_boolean(raw, "dryRun", errors),
         image_limit=_image_limit(raw, errors),
     )

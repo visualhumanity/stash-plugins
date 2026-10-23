@@ -17,8 +17,8 @@ query ListImageScrapers($types: [ScrapeContentType!]!) {
 }"""
 
 FIND_IMAGE_IDS = """
-query FindImageIds($image_filter: ImageFilterType, $filter: FindFilterType) {
-  findImages(image_filter: $image_filter, filter: $filter) {
+query FindImageIds($image_filter: ImageFilterType, $filter: FindFilterType, $ids: [ID!]) {
+  findImages(image_filter: $image_filter, filter: $filter, ids: $ids) {
     images { id visual_files { ... on ImageFile { path } ... on VideoFile { path } } }
   }
 }"""
@@ -120,11 +120,12 @@ class StashClient:
         scrapers = self.call(LIST_IMAGE_SCRAPERS, {"types": ["IMAGE"]})["listScrapers"] or []
         return {s["id"]: (s.get("image") or {}).get("supported_scrapes") or [] for s in scrapers}
 
-    def find_images(self, prefixes, limit, skip_organized=False):
+    def find_images(self, prefixes, limit, skip_organized=False, ids=None):
         """List (id, path) for images under the prefixes, sorted by path, up to limit (0 = all).
 
         With skip_organized, organized images are filtered out by Stash, so the
-        limit counts only images that will be processed.
+        limit counts only images that will be processed. ids limits the search
+        to those images, so one image is checked with the same filter as a run.
         """
         image_filter = {}
         if skip_organized:
@@ -134,7 +135,10 @@ class StashClient:
         found, page = [], 1
         while True:
             find_filter = {"page": page, "per_page": PAGE_SIZE, "sort": "path", "direction": "ASC"}
-            data = self.call(FIND_IMAGE_IDS, {"image_filter": image_filter, "filter": find_filter})
+            variables = {"image_filter": image_filter, "filter": find_filter}
+            if ids is not None:
+                variables["ids"] = [str(i) for i in ids]
+            data = self.call(FIND_IMAGE_IDS, variables)
             images = data["findImages"]["images"]
             for image in images:
                 found.append((image["id"], image_path(image)))
