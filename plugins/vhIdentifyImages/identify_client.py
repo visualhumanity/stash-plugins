@@ -29,6 +29,7 @@ query FindImage($id: ID!) {
     id title code details date organized urls
     performers { id name }
     tags { id name }
+    studio { id name }
     visual_files { ... on ImageFile { path } ... on VideoFile { path } }
   }
 }"""

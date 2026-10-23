@@ -804,6 +804,17 @@ class StudioTests(unittest.TestCase):
         )
         self.assertIn("studios created 3", joined(log))
 
+    def test_reused_studio_already_on_the_image_sends_no_update(self):
+        scrapes = {
+            "1": [{"studio": studio("r_ExampleSub")}],
+            # created as 101 by image 1; image 2 is already on it
+            "2": [{"studio": studio("R_EXAMPLESUB")}],
+        }
+        images = [image(1, SUB + "1.jpg"), image(2, SUB + "2.jpg", studio={"id": "101", "name": "r_ExampleSub"})]
+        stub, log = self.run_images({"createMissingStudios": True, "fieldStudio": "overwrite"}, scrapes, images=images)
+        self.assertEqual(stub.updates(), [{"id": "1", "studio_id": "101"}])
+        self.assertIn("updated 1, unchanged 1", joined(log))
+
     def test_existing_parent_is_updated_once_per_run(self):
         scrapes = {
             "1": [{"studio": studio("r_ExampleSub", parent=studio("Reddit", stored_id="3", urls=[PARENT_URL]))}],

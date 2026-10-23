@@ -90,7 +90,7 @@ The studio follows the single-value rule: `merge` sets it only when the image ha
 - With it on, an unmatched studio is created and linked, following Identify:
   - The new studio gets the scraped name, URLs, details and aliases, whichever the scraper returned.
   - If the scraped parent is missing too, the parent is created first, and the new studio is created under it.
-  - If the scraped parent matched an existing studio, **that parent gets the scraped parent's fields written to it**: name, URLs (replacing its list), details and aliases, plus its own parent when the scrape names a matched one. Only fields the scraper returned are sent, so nothing is cleared. This is what Identify does. Each parent is written at most once per run.
+  - If the scraped parent matched an existing studio, **that parent gets the scraped parent's fields written to it**: name, URLs (replacing its list), details and aliases, plus its own parent when the scrape names a matched one. Only fields the scraper returned are sent, so nothing is cleared. The name is always sent, so this can rename the parent, for example to a different letter case (`reddit` becomes `Reddit`). This is what Identify does. Each parent is written at most once per run.
 - Each missing studio (and parent) is created once per run and reused. Names compare ignoring ASCII case, as for performers and tags.
 - The end summary adds `studios created`, counting parents too. With Dry run on, it counts what would be created, and the log shows each would-be create and parent update.
 

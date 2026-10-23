@@ -28,6 +28,49 @@ class _Server(HTTPServer):
         self.server_name, self.server_port = self.server_address[:2]
 
 
+def _strip_arguments(text):
+    previous = None
+    while previous != text:
+        previous, text = text, re.sub(r"\([^()]*\)", "", text)
+    return text
+
+
+def _parse_selection(tokens, i):
+    """Parse a selection set starting just after "{"; return (selection, index after "}")."""
+    selection = {}
+    while tokens[i] != "}":
+        if tokens[i] == "...":
+            # inline fragment: ... on Type { fields }
+            sub, i = _parse_selection(tokens, i + 4)
+            for name, value in sub.items():
+                selection.setdefault(name, value)
+            continue
+        name = tokens[i]
+        i += 1
+        if tokens[i] == "{":
+            selection[name], i = _parse_selection(tokens, i + 1)
+        else:
+            selection[name] = None
+    return selection, i + 1
+
+
+def selection_set(query):
+    """The fields a GraphQL query selects, as nested dicts (None for a leaf)."""
+    text = _strip_arguments(query)
+    tokens = re.findall(r"\.\.\.|\w+|[{}]", text[text.index("{") :])
+    selection, _ = _parse_selection(tokens, 1)
+    return selection
+
+
+def project(value, selection):
+    """Keep only the selected fields, as a GraphQL server does. Missing fields come back null."""
+    if selection is None or value is None:
+        return value
+    if isinstance(value, list):
+        return [project(v, selection) for v in value]
+    return {name: project(value.get(name), sub) for name, sub in selection.items()}
+
+
 def image_scraper(scraper_id, supported=("FRAGMENT",)):
     return {"id": scraper_id, "name": scraper_id, "image": {"supported_scrapes": list(supported)}}
 
@@ -117,7 +160,12 @@ class FakeStash:
     # GraphQL handling
 
     def respond(self, body):
-        query, variables = body["query"], body.get("variables") or {}
+        response = self.answer(body["query"], body.get("variables") or {})
+        if "data" in response:
+            response = {"data": project(response["data"], selection_set(body["query"]))}
+        return response
+
+    def answer(self, query, variables):
         if "configuration" in query:
             plugins = {} if self.settings is None else {PLUGIN_ID: self.settings}
             return {"data": {"configuration": {"plugins": plugins}}}
@@ -164,10 +212,7 @@ class FakeStash:
         page, per_page = find_filter.get("page", 1), find_filter.get("per_page", 25)
         start = (page - 1) * per_page
         window = matches[start : start + per_page]
-        return {
-            "count": len(matches),
-            "images": [{"id": img["id"], "visual_files": img["visual_files"]} for img in window],
-        }
+        return {"count": len(matches), "images": window}
 
     # Request views for assertions
 
