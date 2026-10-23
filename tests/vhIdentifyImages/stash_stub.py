@@ -35,11 +35,17 @@ def _strip_arguments(text):
     return text
 
 
+class UnsupportedQuery(ValueError):
+    pass
+
+
 def _parse_selection(tokens, i):
     """Parse a selection set starting just after "{"; return (selection, index after "}")."""
     selection = {}
     while tokens[i] != "}":
         if tokens[i] == "...":
+            if tokens[i + 1] != "on":
+                raise UnsupportedQuery(f"named fragment spread ...{tokens[i + 1]} is not supported")
             # inline fragment: ... on Type { fields }
             sub, i = _parse_selection(tokens, i + 4)
             for name, value in sub.items():
@@ -55,9 +61,23 @@ def _parse_selection(tokens, i):
 
 
 def selection_set(query):
-    """The fields a GraphQL query selects, as nested dicts (None for a leaf)."""
+    """The fields a GraphQL query selects, as nested dicts (None for a leaf).
+
+    Supports fields, arguments, nesting and inline fragments. Raises
+    UnsupportedQuery for anything else (aliases, directives, named
+    fragments, string literals) rather than guessing.
+    """
+    if '"' in query:
+        raise UnsupportedQuery("string literals are not supported")
+    if "@" in query:
+        raise UnsupportedQuery("directives are not supported")
+    if re.search(r"\bfragment\b", query):
+        raise UnsupportedQuery("fragment definitions are not supported")
     text = _strip_arguments(query)
-    tokens = re.findall(r"\.\.\.|\w+|[{}]", text[text.index("{") :])
+    body = text[text.index("{") :]
+    if ":" in body:
+        raise UnsupportedQuery("aliases are not supported")
+    tokens = re.findall(r"\.\.\.|\w+|[{}]", body)
     selection, _ = _parse_selection(tokens, 1)
     return selection
 

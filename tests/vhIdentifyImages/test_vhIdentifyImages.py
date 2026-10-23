@@ -772,6 +772,13 @@ class StudioTests(unittest.TestCase):
         self.assertEqual(stub.creates("studioCreate"), [{"name": "r_ExampleSub", "urls": [SUB_URL], "parent_id": "3"}])
         self.assertIn("studios created 1", joined(log))
 
+    def test_existing_parent_gets_its_own_matched_parent(self):
+        grandparent = studio("Example Network", stored_id="2")
+        scraped = studio("r_ExampleSub", parent=studio("Reddit", stored_id="3", parent=grandparent))
+        stub, _ = self.one({"createMissingStudios": True}, scraped)
+        self.assertEqual(stub.calls("studioUpdate")[0]["variables"]["input"], {"id": "3", "name": "Reddit", "parent_id": "2"})
+        self.assertEqual(stub.creates("studioCreate"), [{"name": "r_ExampleSub", "parent_id": "3"}])
+
     def test_parent_update_sends_only_fields_the_scrape_returned(self):
         scraped = studio("r_ExampleSub", parent=studio("Reddit", stored_id="3", urls=[], details="  "))
         stub, _ = self.one({"createMissingStudios": True}, scraped)

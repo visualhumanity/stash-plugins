@@ -107,7 +107,8 @@ The studio follows the single-value rule: `merge` sets it only when the image ha
 
 - **Set organized**: an image the plugin updates also gets marked organized, in the same update. An image already organized is not changed again. Dry run logs it as `organized: False -> True`.
 - Difference from Identify: Identify's Set organized marks every scene it gets a scrape result for, even when nothing else changes. This plugin marks only images it actually updates; an image with no other change is not touched.
-- **Skip organized images**: organized images are filtered out when the run lists images, before any scrape, so the image limit counts only images that will be processed. Combine both options to work through a library in batches.
+- **Skip organized images**: organized images are filtered out when the run lists images, before any scrape, so the image limit counts only images that will be processed.
+- The image limit is for trial runs, not for working through a library in batches. Even with Set organized and Skip organized both on, an image that gets no scrape result, has nothing to change, or fails is never marked organized. It stays in the run, first in path order, and counts against the limit on every rerun, so repeated limited runs can keep processing the same images. Run without a limit to cover the whole library.
 
 ## Mapping to Identify
 
