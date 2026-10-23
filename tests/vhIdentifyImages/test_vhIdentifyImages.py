@@ -120,7 +120,8 @@ class SingleValueFieldTests(unittest.TestCase):
     def run_field(self, field, option, existing, scraped):
         settings = {} if option is None else {SETTING_FOR[field]: option}
         img = image(1, SUB + "a.jpg", **{field: existing})
-        scrape = {field: scraped, "urls": ["https://example.com/post/1"]}
+        # photographer is never applied; it keeps the result non-empty
+        scrape = {field: scraped, "photographer": "Example Photographer"}
         with FakeStash([img], settings=settings, scrapes={"1": [scrape]}) as stub:
             run_plugin(stub)
         return stub.updates()
@@ -190,6 +191,186 @@ class SingleValueFieldTests(unittest.TestCase):
         with FakeStash([img], settings=settings, scrapes={"1": [scrape]}) as stub:
             run_plugin(stub)
         self.assertEqual(stub.updates(), [{"id": "1", "title": "Example Image", "date": "2024-01-02"}])
+
+
+URL_A = "https://example.com/post/a"
+URL_B = "https://example.com/post/b"
+URL_C = "https://example.com/post/c"
+
+
+def performer(stored_id, name):
+    return {"stored_id": stored_id, "name": name}
+
+
+def tag(stored_id, name):
+    return {"stored_id": stored_id, "name": name}
+
+
+def linked(entity_id, name):
+    return {"id": entity_id, "name": name}
+
+
+class UrlTests(unittest.TestCase):
+    def run_urls(self, option, existing, scraped):
+        settings = {} if option is None else {"fieldUrls": option}
+        img = image(1, SUB + "a.jpg", urls=existing)
+        with FakeStash([img], settings=settings, scrapes={"1": [{"title": "Example Image", "urls": scraped}]}) as stub:
+            run_plugin(stub)
+        return [{k: v for k, v in u.items() if k in ("id", "urls")} for u in stub.updates() if "urls" in u]
+
+    def test_merge_adds_scraped_urls_not_already_present(self):
+        self.assertEqual(
+            self.run_urls("merge", [URL_A], [URL_B, URL_A, URL_C]),
+            [{"id": "1", "urls": [URL_A, URL_B, URL_C]}],
+        )
+
+    def test_unset_option_means_merge(self):
+        self.assertEqual(self.run_urls(None, [URL_A], [URL_B]), [{"id": "1", "urls": [URL_A, URL_B]}])
+
+    def test_merge_with_nothing_new_changes_nothing(self):
+        self.assertEqual(self.run_urls("merge", [URL_A, URL_B], [URL_B]), [])
+
+    def test_overwrite_replaces_the_list(self):
+        self.assertEqual(
+            self.run_urls("overwrite", [URL_A, URL_B], [URL_C, URL_A]),
+            [{"id": "1", "urls": [URL_C, URL_A]}],
+        )
+
+    def test_overwrite_with_only_known_urls_changes_nothing(self):
+        # Identify only overwrites when a scraped URL is not already on the item
+        self.assertEqual(self.run_urls("overwrite", [URL_A, URL_B], [URL_B]), [])
+
+    def test_ignore_leaves_urls_alone(self):
+        self.assertEqual(self.run_urls("ignore", [], [URL_A]), [])
+
+    def test_empty_scraped_list_changes_nothing(self):
+        for option in ("merge", "overwrite", "ignore"):
+            for scraped in ([], None, [""]):
+                with self.subTest(option=option, scraped=scraped):
+                    self.assertEqual(self.run_urls(option, [URL_A], scraped), [])
+
+
+class RelationshipTests(unittest.TestCase):
+    """Performers and tags share the same rules; each test runs both."""
+
+    FIELDS = {
+        "performers": ("fieldPerformers", "performer_ids", performer),
+        "tags": ("fieldTags", "tag_ids", tag),
+    }
+
+    def run_field(self, field, option, existing, scraped):
+        setting, _key, _make = self.FIELDS[field]
+        settings = {} if option is None else {setting: option}
+        img = image(1, SUB + "a.jpg", **{field: existing})
+        scrape = {"title": "Example Image", field: scraped}
+        with FakeStash([img], settings=settings, scrapes={"1": [scrape]}) as stub:
+            run_plugin(stub)
+        return stub
+
+    def update_ids(self, stub, field):
+        key = self.FIELDS[field][1]
+        return [u[key] for u in stub.updates() if key in u]
+
+    def each_field(self):
+        for field, (_setting, _key, make) in self.FIELDS.items():
+            with self.subTest(field=field):
+                yield field, make
+
+    def test_merge_adds_matched_items_to_existing_links(self):
+        for field, make in self.each_field():
+            stub = self.run_field(field, "merge", [linked("5", "Existing")], [make("7", "Example"), make("5", "Existing")])
+            self.assertEqual(self.update_ids(stub, field), [["5", "7"]])
+
+    def test_unset_option_means_merge(self):
+        for field, make in self.each_field():
+            stub = self.run_field(field, None, [linked("5", "Existing")], [make("7", "Example")])
+            self.assertEqual(self.update_ids(stub, field), [["5", "7"]])
+
+    def test_merge_with_nothing_new_changes_nothing(self):
+        for field, make in self.each_field():
+            stub = self.run_field(field, "merge", [linked("5", "Existing"), linked("7", "Example")], [make("7", "Example")])
+            self.assertEqual(self.update_ids(stub, field), [])
+
+    def test_overwrite_replaces_the_links(self):
+        for field, make in self.each_field():
+            stub = self.run_field(field, "overwrite", [linked("5", "Existing")], [make("7", "Example"), make("8", "Example Two")])
+            self.assertEqual(self.update_ids(stub, field), [["7", "8"]])
+
+    def test_overwrite_with_the_same_links_in_another_order_changes_nothing(self):
+        for field, make in self.each_field():
+            stub = self.run_field(
+                field, "overwrite", [linked("8", "Example Two"), linked("7", "Example")], [make("7", "Example"), make("8", "Example Two")]
+            )
+            self.assertEqual(self.update_ids(stub, field), [])
+
+    def test_ignore_leaves_links_alone(self):
+        for field, make in self.each_field():
+            stub = self.run_field(field, "ignore", [], [make("7", "Example")])
+            self.assertEqual(self.update_ids(stub, field), [])
+
+    def test_empty_scraped_list_changes_nothing(self):
+        for field, _make in self.each_field():
+            for option in ("merge", "overwrite", "ignore"):
+                for scraped in ([], None):
+                    stub = self.run_field(field, option, [linked("5", "Existing")], scraped)
+                    self.assertEqual(self.update_ids(stub, field), [], (option, scraped))
+
+    def test_unmatched_items_are_dropped_and_not_created(self):
+        for field, make in self.each_field():
+            stub = self.run_field(field, "merge", [], [make(None, "u_example_user"), make("7", "Example")])
+            self.assertEqual(self.update_ids(stub, field), [["7"]])
+            self.assertEqual([m for m in stub.mutations() if "imageUpdate" not in m["query"]], [])
+
+    def test_only_unmatched_items_under_merge_changes_nothing(self):
+        for field, make in self.each_field():
+            stub = self.run_field(field, "merge", [linked("5", "Existing")], [make(None, "u_example_user")])
+            self.assertEqual(self.update_ids(stub, field), [])
+
+    def test_overwrite_with_only_unmatched_items_clears_links_like_identify(self):
+        for field, make in self.each_field():
+            stub = self.run_field(field, "overwrite", [linked("5", "Existing")], [make(None, "u_example_user")])
+            self.assertEqual(self.update_ids(stub, field), [[]])
+
+    def test_only_image_updates_are_sent(self):
+        for field, make in self.each_field():
+            stub = self.run_field(field, "overwrite", [linked("5", "Existing")], [make("7", "Example"), make(None, "New")])
+            self.assertEqual({m["query"].split("(")[0].split()[-1] for m in stub.mutations()}, {"ImageUpdate"})
+
+    def test_invalid_options_are_refused(self):
+        for setting in ("fieldUrls", "fieldPerformers", "fieldTags"):
+            with self.subTest(setting=setting):
+                with FakeStash([image(1, SUB + "a.jpg")], settings={setting: "append"}) as stub:
+                    log = run_plugin(stub)
+                self.assertIn(setting, joined(log, "e"))
+                self.assertEqual(stub.calls("scrapeSingleImage"), [])
+                self.assertEqual(stub.mutations(), [])
+
+    def test_all_three_combine_into_one_update(self):
+        img = image(1, SUB + "a.jpg", urls=[URL_A], performers=[linked("5", "Existing")], tags=[])
+        scrape = {"urls": [URL_B], "performers": [performer("7", "Example")], "tags": [tag("9", "Example Tag")]}
+        with FakeStash([img], settings={}, scrapes={"1": [scrape]}) as stub:
+            run_plugin(stub)
+        self.assertEqual(
+            stub.updates(),
+            [{"id": "1", "urls": [URL_A, URL_B], "performer_ids": ["5", "7"], "tag_ids": ["9"]}],
+        )
+
+    def test_dry_run_logs_url_performer_and_tag_changes_without_writing(self):
+        img = image(1, SUB + "a.jpg", urls=[URL_A], performers=[linked("5", "Existing Performer")], tags=[linked("3", "Old Tag")])
+        scrape = {
+            "urls": [URL_B],
+            "performers": [performer("7", "Example Performer"), performer(None, "u_example_user")],
+            "tags": [tag("9", "Example Tag")],
+        }
+        settings = {"dryRun": True, "fieldTags": "overwrite"}
+        with FakeStash([img], settings=settings, scrapes={"1": [scrape]}) as stub:
+            log = run_plugin(stub)
+        self.assertEqual(stub.mutations(), [])
+        text = joined(log)
+        self.assertIn(f"urls: ['{URL_A}'] -> ['{URL_A}', '{URL_B}']", text)
+        self.assertIn("performers: ['Existing Performer'] -> ['Existing Performer', 'Example Performer']", text)
+        self.assertIn("tags: ['Old Tag'] -> ['Example Tag']", text)
+        self.assertIn("u_example_user", text)
 
 
 class DryRunTests(unittest.TestCase):
@@ -381,6 +562,9 @@ class ManifestTests(unittest.TestCase):
             "fieldCode": "STRING",
             "fieldDetails": "STRING",
             "fieldDate": "STRING",
+            "fieldUrls": "STRING",
+            "fieldPerformers": "STRING",
+            "fieldTags": "STRING",
             "dryRun": "BOOLEAN",
             "imageLimit": "NUMBER",
         }

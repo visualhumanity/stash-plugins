@@ -35,6 +35,18 @@ settings:
     displayName: Date option
     description: ignore, merge or overwrite. Empty means merge (set only when the image has no date).
     type: STRING
+  fieldUrls:
+    displayName: URLs option
+    description: ignore, merge or overwrite. Empty means merge (add scraped URLs that are not already on the image).
+    type: STRING
+  fieldPerformers:
+    displayName: Performers option
+    description: ignore, merge or overwrite. Empty means merge (add matched performers to the existing ones). Only performers that already exist in Stash are linked.
+    type: STRING
+  fieldTags:
+    displayName: Tags option
+    description: ignore, merge or overwrite. Empty means merge (add matched tags to the existing ones). Only tags that already exist in Stash are linked.
+    type: STRING
   dryRun:
     displayName: Dry run
     description: Log each image's changes (field, old value, new value) without writing anything.

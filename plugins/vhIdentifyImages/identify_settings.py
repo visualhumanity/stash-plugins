@@ -17,6 +17,9 @@ FIELD_SETTINGS = {
     "code": "fieldCode",
     "details": "fieldDetails",
     "date": "fieldDate",
+    "urls": "fieldUrls",
+    "performers": "fieldPerformers",
+    "tags": "fieldTags",
 }
 
 

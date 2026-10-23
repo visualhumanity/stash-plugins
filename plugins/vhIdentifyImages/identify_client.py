@@ -22,7 +22,9 @@ query FindImageIds($image_filter: ImageFilterType, $filter: FindFilterType) {
 FIND_IMAGE = """
 query FindImage($id: ID!) {
   findImage(id: $id) {
-    id title code details date organized
+    id title code details date organized urls
+    performers { id name }
+    tags { id name }
     visual_files { ... on ImageFile { path } ... on VideoFile { path } }
   }
 }"""
@@ -31,6 +33,8 @@ SCRAPE_IMAGE = """
 query ScrapeSingleImage($source: ScraperSourceInput!, $input: ScrapeSingleImageInput!) {
   scrapeSingleImage(source: $source, input: $input) {
     title code details photographer urls date
+    performers { stored_id name disambiguation urls }
+    tags { stored_id name }
   }
 }"""
 

@@ -36,6 +36,9 @@ def image(image_id, path, **fields):
         "details": None,
         "date": None,
         "organized": False,
+        "urls": [],
+        "performers": [],
+        "tags": [],
         "visual_files": [{"path": path}],
     }
     record.update(fields)
@@ -135,6 +138,9 @@ class FakeStash:
 
     def scrape_sources(self):
         return [b["variables"]["source"] for b in self.calls("scrapeSingleImage")]
+
+    def mutations(self):
+        return [b for b in (r["body"] for r in self.requests) if b["query"].lstrip().startswith("mutation")]
 
     def updates(self):
         return [b["variables"]["input"] for b in self.calls("imageUpdate")]

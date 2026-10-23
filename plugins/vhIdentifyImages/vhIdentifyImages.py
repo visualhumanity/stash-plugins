@@ -12,7 +12,13 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from identify_client import StashClient, image_path  # noqa: E402
-from identify_rules import build_update_input, describe_changes, has_result, plan_changes  # noqa: E402
+from identify_rules import (  # noqa: E402
+    build_update_input,
+    describe_changes,
+    describe_unmatched,
+    has_result,
+    plan_changes,
+)
 from identify_settings import SettingsError, parse_settings  # noqa: E402
 
 PLUGIN_ID = "vhIdentifyImages"
@@ -67,7 +73,9 @@ def process_image(stash, settings, image_id, label, log):
     if scraped is None:
         log.info(f"{label}: no scrape result")
         return "no result"
-    changes = plan_changes(image, scraped, settings.field_strategies)
+    changes, unmatched = plan_changes(image, scraped, settings.field_strategies)
+    if unmatched:
+        log.info(f"{label}: not linked, no existing match: {describe_unmatched(unmatched)}")
     if not changes:
         return "unchanged"
     if settings.dry_run:

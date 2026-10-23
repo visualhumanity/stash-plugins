@@ -31,6 +31,9 @@ Stash plugin settings have no stored defaults: an empty setting means the defaul
 | Code option | text | `merge` | As above, for the studio code. |
 | Details option | text | `merge` | As above, for details. |
 | Date option | text | `merge` | As above, for the date. |
+| URLs option | text | `merge` | As above, for URLs. See list fields. |
+| Performers option | text | `merge` | As above, for performers. See list fields. |
+| Tags option | text | `merge` | As above, for tags. See list fields. |
 | Dry run | on/off | off | Compute and log every change without writing anything. |
 | Image limit | number | 0 (no limit) | Stop after this many images, in path order. |
 
@@ -48,16 +51,29 @@ These are Identify's rules for single-value fields:
 
 A field the scraper returns nothing for (missing or blank) is never touched, under any option. The image is updated only when at least one field changes.
 
+### List fields: URLs, performers and tags
+
+| Option | Effect |
+|---|---|
+| `ignore` | left alone |
+| `merge` | scraped items are added to the image's existing ones, without duplicates |
+| `overwrite` | the image's list is replaced by the scraped one |
+
+- An empty scraped list changes nothing, under any option.
+- URLs under `overwrite`: as in Identify, the list is replaced only when the scrape has a URL the image does not have yet.
+- Performers and tags are linked only when Stash matched the scraped item to an existing performer or tag (the same matching the image Scrape menu shows). Unmatched items are dropped and logged as "not linked, no existing match". Nothing is created, and existing performers and tags are never edited.
+- Performers and tags under `overwrite`: as in Identify, the links are replaced by the matched items only. If the scrape returns performers but none of them match, the image's performers are cleared. Same for tags.
+
 ## Mapping to Identify
 
 | Identify | This plugin |
 |---|---|
 | Sources list | Scraper ID (one source for now; the task already goes through an ordered list and uses the first result) |
-| Field options: Title, Code, Details, Date | Title, Code, Details, Date options |
+| Field options: Title, Code, Details, Date, URLs, Performers, Tags | Title, Code, Details, Date, URLs, Performers, Tags options |
 | Default strategy for an unset field: merge | Same |
 | Paths to process | Folder prefixes |
 
 ## Known limitations
 
-- Only title, code, details and date are applied so far. URLs, studio, performers and tags from the scrape are not yet applied.
+- The studio from the scrape is not applied yet, and missing performers and tags are not created yet.
 - Stash-box sources are not supported (Stash's single-image scrape has no stash-box support).
