@@ -9,7 +9,7 @@ Does for images what Stash's Identify task does for scenes. A task goes through 
 Settings > Tasks > Plugin Tasks > VH - Identify Images > **Identify images**. Progress shows in Stash's task list. Each changed image is logged (Settings > Logs) as field, old value and new value, and the run ends with a summary:
 
 ```
-processed 120, updated 95, unchanged 20, no result 4, failed 1, performers created 3, tags created 0
+processed 120, updated 95, unchanged 20, no result 4, failed 1, performers created 3, tags created 0, studios created 2
 ```
 
 - **updated**: at least one field changed (with Dry run on: would change).
@@ -34,8 +34,10 @@ Stash plugin settings have no stored defaults: an empty setting means the defaul
 | URLs option | text | `merge` | As above, for URLs. See list fields. |
 | Performers option | text | `merge` | As above, for performers. See list fields. |
 | Tags option | text | `merge` | As above, for tags. See list fields. |
+| Studio option | text | `merge` | As above, for the studio. See studio. |
 | Create missing performers | on/off | off | Create scraped performers that are not in Stash yet, then link them. See creating missing performers and tags. |
 | Create missing tags | on/off | off | Create scraped tags that are not in Stash yet, then link them. |
+| Create missing studios | on/off | off | Create a scraped studio that is not in Stash yet (and its parent), then link it. See studio. |
 | Skip single-name performers | on/off | off | Do not create a performer whose name has no space and who has no disambiguation. |
 | Dry run | on/off | off | Compute and log every change without writing anything. |
 | Image limit | number | 0 (no limit) | Stop after this many images, in path order. |
@@ -77,18 +79,31 @@ A field the scraper returns nothing for (missing or blank) is never touched, und
 - The end summary adds `performers created` and `tags created`. With Dry run on, these count what would be created, and each would-be create is logged.
 - **Skip single-name performers** follows Identify's rule: with it on, a performer whose name has no space and who has no disambiguation is not created (the rest of the image is still updated). Reddit uploader names such as `u_example_user` have no space, so keep this off when scraping Reddit images, or no uploader is ever created.
 
+### Studio
+
+The studio follows the single-value rule: `merge` sets it only when the image has no studio, `overwrite` replaces it, `ignore` leaves it. A scrape with no studio (or a blank name) changes nothing.
+
+- A scraped studio that Stash matched to an existing studio is linked. That studio is never edited, and neither is its parent.
+- With **Create missing studios** off, an unmatched studio is dropped and logged as "not linked, no existing match".
+- With it on, an unmatched studio is created and linked, following Identify:
+  - The new studio gets the scraped name, URLs, details and aliases, whichever the scraper returned.
+  - If the scraped parent is missing too, the parent is created first, and the new studio is created under it.
+  - If the scraped parent matched an existing studio, **that parent gets the scraped parent's fields written to it**: name, URLs (replacing its list), details and aliases, plus its own parent when the scrape names a matched one. Only fields the scraper returned are sent, so nothing is cleared. This is what Identify does. Each parent is written at most once per run.
+- Each missing studio (and parent) is created once per run and reused. Names compare without regard to case.
+- The end summary adds `studios created`, counting parents too. With Dry run on, it counts what would be created, and the log shows each would-be create and parent update.
+
 ## Mapping to Identify
 
 | Identify | This plugin |
 |---|---|
 | Sources list | Scraper ID (one source for now; the task already goes through an ordered list and uses the first result) |
-| Field options: Title, Code, Details, Date, URLs, Performers, Tags | Title, Code, Details, Date, URLs, Performers, Tags options |
-| Create missing (performers, tags) | Create missing performers, Create missing tags |
+| Field options: Title, Code, Details, Date, URLs, Studio, Performers, Tags | Title, Code, Details, Date, URLs, Studio, Performers, Tags options |
+| Create missing (performers, tags, studio) | Create missing performers, Create missing tags, Create missing studios |
 | Skip single-name performers | Same (the "skipped" tag option is not supported) |
 | Default strategy for an unset field: merge | Same |
 | Paths to process | Folder prefixes |
 
 ## Known limitations
 
-- The studio from the scrape is not applied yet.
+- Studio and parent images (logos) from the scrape are not set.
 - Stash-box sources are not supported (Stash's single-image scrape has no stash-box support).

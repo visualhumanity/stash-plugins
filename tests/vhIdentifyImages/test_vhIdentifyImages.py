@@ -535,6 +535,183 @@ class CreateMissingTests(unittest.TestCase):
                 self.assertEqual(stub.mutations(), [])
 
 
+PARENT_URL = "https://example.com/reddit"
+SUB_URL = "https://example.com/r/ExampleSub"
+
+
+def studio(name, stored_id=None, urls=None, parent=None, **extra):
+    item = {"stored_id": stored_id, "name": name}
+    if urls is not None:
+        item["urls"] = urls
+    if parent is not None:
+        item["parent"] = parent
+    item.update(extra)
+    return item
+
+
+def operation_names(stub):
+    return [m["query"].split("(")[0].split()[-1] for m in stub.mutations()]
+
+
+class StudioTests(unittest.TestCase):
+    def run_images(self, settings, scrapes, images=None):
+        images = images or [image(i, f"{SUB}{i}.jpg") for i in sorted(scrapes, key=int)]
+        with FakeStash(images, settings=settings, scrapes=scrapes) as stub:
+            log = run_plugin(stub)
+        return stub, log
+
+    def one(self, settings, scraped_studio, existing=None):
+        img = image(1, SUB + "1.jpg", studio=existing)
+        return self.run_images(settings, {"1": [{"title": "Example Image", "studio": scraped_studio}]}, images=[img])
+
+    def studio_updates(self, stub):
+        return [u.get("studio_id") for u in stub.updates() if "studio_id" in u]
+
+    # linking and field options
+
+    def test_matched_studio_is_linked_by_default(self):
+        stub, _ = self.one({}, studio("r_ExampleSub", stored_id="4"))
+        self.assertEqual(self.studio_updates(stub), ["4"])
+        self.assertEqual(operation_names(stub), ["ImageUpdate"])
+
+    def test_merge_sets_only_when_the_image_has_no_studio(self):
+        stub, _ = self.one({"fieldStudio": "merge"}, studio("r_ExampleSub", stored_id="4"), existing={"id": "2", "name": "Old Studio"})
+        self.assertEqual(self.studio_updates(stub), [])
+
+    def test_overwrite_replaces_the_studio(self):
+        stub, _ = self.one({"fieldStudio": "overwrite"}, studio("r_ExampleSub", stored_id="4"), existing={"id": "2", "name": "Old Studio"})
+        self.assertEqual(self.studio_updates(stub), ["4"])
+
+    def test_overwrite_with_the_same_studio_changes_nothing(self):
+        stub, _ = self.one({"fieldStudio": "overwrite"}, studio("r_ExampleSub", stored_id="4"), existing={"id": "4", "name": "r_ExampleSub"})
+        self.assertEqual(self.studio_updates(stub), [])
+
+    def test_ignore_leaves_the_studio_alone(self):
+        stub, _ = self.one({"fieldStudio": "ignore", "createMissingStudios": True}, studio("r_ExampleSub", stored_id="4"))
+        self.assertEqual(self.studio_updates(stub), [])
+        stub, _ = self.one({"fieldStudio": "ignore", "createMissingStudios": True}, studio("r_ExampleSub"))
+        self.assertEqual(stub.mutations()[0]["variables"]["input"].keys() - {"id", "title"}, set())
+
+    def test_no_scraped_studio_changes_nothing(self):
+        for scraped in (None, studio(""), studio("  ")):
+            with self.subTest(scraped=scraped):
+                stub, _ = self.one({"fieldStudio": "overwrite", "createMissingStudios": True}, scraped, existing={"id": "2", "name": "Old Studio"})
+                self.assertEqual(self.studio_updates(stub), [])
+                self.assertEqual(operation_names(stub), ["ImageUpdate"])
+
+    def test_matched_studio_and_its_parent_are_never_edited(self):
+        scraped = studio("r_ExampleSub", stored_id="4", urls=[SUB_URL], parent=studio("Reddit", stored_id="3", urls=[PARENT_URL]))
+        stub, _ = self.one({"createMissingStudios": True}, scraped)
+        self.assertEqual(operation_names(stub), ["ImageUpdate"])
+
+    def test_unmatched_studio_is_dropped_when_create_is_off(self):
+        stub, log = self.one({}, studio("r_ExampleSub", urls=[SUB_URL]))
+        self.assertEqual(self.studio_updates(stub), [])
+        self.assertEqual(operation_names(stub), ["ImageUpdate"])
+        self.assertIn("r_ExampleSub", joined(log))
+
+    def test_invalid_settings_are_refused(self):
+        for settings, name in (({"fieldStudio": "keep"}, "fieldStudio"), ({"createMissingStudios": 1}, "createMissingStudios")):
+            with self.subTest(setting=name):
+                stub, log = self.one(settings, studio("r_ExampleSub", stored_id="4"))
+                self.assertIn(name, joined(log, "e"))
+                self.assertEqual(stub.calls("scrapeSingleImage"), [])
+                self.assertEqual(stub.mutations(), [])
+
+    # creating
+
+    def test_missing_studio_without_parent_is_created_and_linked(self):
+        stub, log = self.one({"createMissingStudios": True}, studio("r_ExampleSub", urls=[SUB_URL]))
+        self.assertEqual(stub.creates("studioCreate"), [{"name": "r_ExampleSub", "urls": [SUB_URL]}])
+        self.assertEqual(self.studio_updates(stub), ["101"])
+        self.assertIn("studios created 1", joined(log))
+
+    def test_deprecated_single_url_is_used_when_urls_is_empty(self):
+        stub, _ = self.one({"createMissingStudios": True}, studio("r_ExampleSub", urls=[], url=SUB_URL))
+        self.assertEqual(stub.creates("studioCreate"), [{"name": "r_ExampleSub", "urls": [SUB_URL]}])
+
+    def test_missing_parent_is_created_first(self):
+        scraped = studio("r_ExampleSub", urls=[SUB_URL], parent=studio("Reddit", urls=[PARENT_URL]))
+        stub, log = self.one({"createMissingStudios": True}, scraped)
+        self.assertEqual(operation_names(stub), ["StudioCreate", "StudioCreate", "ImageUpdate"])
+        self.assertEqual(
+            stub.creates("studioCreate"),
+            [{"name": "Reddit", "urls": [PARENT_URL]}, {"name": "r_ExampleSub", "urls": [SUB_URL], "parent_id": "101"}],
+        )
+        self.assertEqual(self.studio_updates(stub), ["102"])
+        self.assertIn("studios created 2", joined(log))
+
+    def test_existing_parent_gets_the_scraped_parent_fields(self):
+        parent = studio("Reddit", stored_id="3", urls=[PARENT_URL], details="Example parent details", aliases="Example Alias, Other Alias")
+        scraped = studio("r_ExampleSub", urls=[SUB_URL], parent=parent)
+        stub, log = self.one({"createMissingStudios": True}, scraped)
+        self.assertEqual(operation_names(stub), ["StudioUpdate", "StudioCreate", "ImageUpdate"])
+        self.assertEqual(
+            stub.calls("studioUpdate")[0]["variables"]["input"],
+            {"id": "3", "name": "Reddit", "urls": [PARENT_URL], "details": "Example parent details", "aliases": ["Example Alias", "Other Alias"]},
+        )
+        self.assertEqual(stub.creates("studioCreate"), [{"name": "r_ExampleSub", "urls": [SUB_URL], "parent_id": "3"}])
+        self.assertIn("studios created 1", joined(log))
+
+    def test_parent_update_sends_only_fields_the_scrape_returned(self):
+        scraped = studio("r_ExampleSub", parent=studio("Reddit", stored_id="3", urls=[], details="  "))
+        stub, _ = self.one({"createMissingStudios": True}, scraped)
+        self.assertEqual(stub.calls("studioUpdate")[0]["variables"]["input"], {"id": "3", "name": "Reddit"})
+
+    def test_existing_studio_is_never_edited_when_linking(self):
+        scraped = studio("r_ExampleSub", stored_id="4", parent=studio("Reddit", urls=[PARENT_URL]))
+        stub, _ = self.one({"createMissingStudios": True}, scraped)
+        self.assertEqual(operation_names(stub), ["ImageUpdate"])
+        self.assertEqual(self.studio_updates(stub), ["4"])
+
+    def test_merge_with_a_studio_set_creates_nothing(self):
+        scraped = studio("r_ExampleSub", parent=studio("Reddit"))
+        stub, _ = self.one({"createMissingStudios": True}, scraped, existing={"id": "2", "name": "Old Studio"})
+        self.assertEqual(operation_names(stub), ["ImageUpdate"])
+
+    def test_same_missing_studio_is_created_once_per_run(self):
+        scrapes = {
+            "1": [{"studio": studio("r_ExampleSub", parent=studio("Reddit"))}],
+            "2": [{"studio": studio("R_EXAMPLESUB", parent=studio("reddit"))}],
+            "3": [{"studio": studio("r_OtherSub", parent=studio("Reddit"))}],
+            "4": [{"studio": studio("Reddit")}],
+        }
+        stub, log = self.run_images({"createMissingStudios": True}, scrapes)
+        self.assertEqual([c["name"] for c in stub.creates("studioCreate")], ["Reddit", "r_ExampleSub", "r_OtherSub"])
+        self.assertEqual(stub.creates("studioCreate")[2]["parent_id"], "101")
+        self.assertEqual(
+            [(u["id"], u["studio_id"]) for u in stub.updates()],
+            [("1", "102"), ("2", "102"), ("3", "103"), ("4", "101")],
+        )
+        self.assertIn("studios created 3", joined(log))
+
+    def test_existing_parent_is_updated_once_per_run(self):
+        scrapes = {
+            "1": [{"studio": studio("r_ExampleSub", parent=studio("Reddit", stored_id="3", urls=[PARENT_URL]))}],
+            "2": [{"studio": studio("r_OtherSub", parent=studio("Reddit", stored_id="3", urls=[PARENT_URL]))}],
+        }
+        stub, _ = self.run_images({"createMissingStudios": True}, scrapes)
+        self.assertEqual(len(stub.calls("studioUpdate")), 1)
+        self.assertEqual(len(stub.calls("studioCreate")), 2)
+
+    def test_dry_run_logs_creates_and_parent_update_with_no_mutations(self):
+        scrapes = {
+            "1": [{"studio": studio("r_ExampleSub", parent=studio("Reddit"))}],
+            "2": [{"studio": studio("r_ExampleSub", parent=studio("Reddit"))}],
+            "3": [{"studio": studio("r_OtherSub", parent=studio("Example Parent", stored_id="3", urls=[PARENT_URL]))}],
+        }
+        stub, log = self.run_images({"createMissingStudios": True, "dryRun": True}, scrapes)
+        self.assertEqual(stub.mutations(), [])
+        text = joined(log)
+        self.assertEqual(text.count("would create studio 'Reddit'"), 1)
+        self.assertEqual(text.count("would create studio 'r_ExampleSub'"), 1)
+        self.assertIn("would update studio 3 ('Example Parent')", text)
+        self.assertIn(PARENT_URL, text)
+        self.assertIn("studio: None -> 'r_ExampleSub'", text)
+        self.assertIn("updated 3", text)
+        self.assertIn("studios created 3", text)
+
+
 class DryRunTests(unittest.TestCase):
     def test_dry_run_sends_no_update_and_logs_old_and_new_values(self):
         img = image(1, SUB + "a.jpg", title="Old Title")
@@ -727,8 +904,10 @@ class ManifestTests(unittest.TestCase):
             "fieldUrls": "STRING",
             "fieldPerformers": "STRING",
             "fieldTags": "STRING",
+            "fieldStudio": "STRING",
             "createMissingPerformers": "BOOLEAN",
             "createMissingTags": "BOOLEAN",
+            "createMissingStudios": "BOOLEAN",
             "skipSingleNamePerformers": "BOOLEAN",
             "dryRun": "BOOLEAN",
             "imageLimit": "NUMBER",

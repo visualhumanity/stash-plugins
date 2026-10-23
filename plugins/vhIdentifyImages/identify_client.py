@@ -35,6 +35,10 @@ query ScrapeSingleImage($source: ScraperSourceInput!, $input: ScrapeSingleImageI
     title code details photographer urls date
     performers { stored_id name disambiguation urls }
     tags { stored_id name }
+    studio {
+      stored_id name url urls details aliases
+      parent { stored_id name url urls details aliases parent { stored_id name } }
+    }
   }
 }"""
 
@@ -46,6 +50,16 @@ mutation PerformerCreate($input: PerformerCreateInput!) {
 TAG_CREATE = """
 mutation TagCreate($input: TagCreateInput!) {
   tagCreate(input: $input) { id }
+}"""
+
+STUDIO_CREATE = """
+mutation StudioCreate($input: StudioCreateInput!) {
+  studioCreate(input: $input) { id }
+}"""
+
+STUDIO_UPDATE = """
+mutation StudioUpdate($input: StudioUpdateInput!) {
+  studioUpdate(input: $input) { id }
 }"""
 
 IMAGE_UPDATE = """
@@ -125,10 +139,16 @@ class StashClient:
         return self.call(SCRAPE_IMAGE, variables)["scrapeSingleImage"] or []
 
     def create(self, field, create_input):
-        """Create a performer or tag (field 'performers' or 'tags') and return its ID."""
-        if field == "performers":
-            return self.call(PERFORMER_CREATE, {"input": create_input})["performerCreate"]["id"]
-        return self.call(TAG_CREATE, {"input": create_input})["tagCreate"]["id"]
+        """Create a performer, tag or studio (field 'performers', 'tags' or 'studio'); return its ID."""
+        query, name = {
+            "performers": (PERFORMER_CREATE, "performerCreate"),
+            "tags": (TAG_CREATE, "tagCreate"),
+            "studio": (STUDIO_CREATE, "studioCreate"),
+        }[field]
+        return self.call(query, {"input": create_input})[name]["id"]
+
+    def update_studio(self, update_input):
+        return self.call(STUDIO_UPDATE, {"input": update_input})["studioUpdate"]
 
     def update_image(self, update_input):
         return self.call(IMAGE_UPDATE, {"input": update_input})["imageUpdate"]

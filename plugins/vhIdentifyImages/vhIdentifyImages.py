@@ -19,6 +19,10 @@ from identify_rules import (  # noqa: E402
     has_result,
     pending_creates,
     plan_changes,
+    studio_create_input,
+    studio_key,
+    studio_name,
+    studio_update_input,
 )
 from identify_settings import SettingsError, parse_settings  # noqa: E402
 
@@ -72,12 +76,14 @@ class RunState:
 
     def __init__(self):
         self.counts = {"updated": 0, "unchanged": 0, "no result": 0, "failed": 0}
-        self.created = {"performers": 0, "tags": 0}
+        self.created = {"performers": 0, "tags": 0, "studio": 0}
         # creation key -> new ID (None in a dry run)
         self.created_ids = {}
+        # IDs of existing parent studios already written to in this run
+        self.updated_parents = set()
 
 
-SINGULAR = {"performers": "performer", "tags": "tag"}
+SINGULAR = {"performers": "performer", "tags": "tag", "studio": "studio"}
 
 
 def resolve_creates(stash, settings, changes, state, label, log):
@@ -112,6 +118,55 @@ def resolve_creates(stash, settings, changes, state, label, log):
             changes[field] = (old, unique)
 
 
+def _create_studio(stash, settings, item, parent_id, state, label, log):
+    """Create a scraped studio once per run; return its ID (None in a dry run)."""
+    key = studio_key(studio_name(item))
+    if key not in state.created_ids:
+        create_input = studio_create_input(item, parent_id)
+        if settings.dry_run:
+            log.info(f"{label}: would create studio {create_input['name']!r}")
+            state.created_ids[key] = None
+        else:
+            new_id = str(stash.create("studio", create_input))
+            log.info(f"{label}: created studio {create_input['name']!r} (id {new_id})")
+            state.created_ids[key] = new_id
+        state.created["studio"] += 1
+    return state.created_ids[key]
+
+
+def _apply_parent(stash, settings, parent, state, label, log):
+    """Identify's parent handling for a studio about to be created; return the parent ID."""
+    if not studio_name(parent):
+        return None
+    if parent.get("stored_id") is None:
+        return _create_studio(stash, settings, parent, None, state, label, log)
+    update = studio_update_input(parent)
+    if update["id"] not in state.updated_parents:
+        fields = {k: v for k, v in update.items() if k != "id"}
+        if settings.dry_run:
+            log.info(f"{label}: would update studio {update['id']} ({update['name']!r}) with {fields!r}")
+        else:
+            stash.update_studio(update)
+            log.info(f"{label}: updated studio {update['id']} ({update['name']!r}) with {fields!r}")
+        state.updated_parents.add(update["id"])
+    return update["id"]
+
+
+def resolve_studio(stash, settings, changes, state, label, log):
+    """Give a to-be-created studio an ID, handling its parent first, as Identify does."""
+    if "studio" not in changes:
+        return
+    old, new = changes["studio"]
+    if new["id"] is not None:
+        return
+    if new["key"] not in state.created_ids:
+        parent_id = _apply_parent(stash, settings, new["create"].get("parent"), state, label, log)
+        _create_studio(stash, settings, new["create"], parent_id, state, label, log)
+    new["id"] = state.created_ids[new["key"]]
+    if not settings.dry_run and old is not None and old["id"] == new["id"]:
+        del changes["studio"]
+
+
 def process_image(stash, settings, image_id, label, state, log):
     """Scrape and apply one image. Returns 'updated', 'unchanged' or 'no result'."""
     image = stash.find_image(image_id)
@@ -122,11 +177,13 @@ def process_image(stash, settings, image_id, label, state, log):
     create_options = {
         "performers": settings.create_missing_performers,
         "tags": settings.create_missing_tags,
+        "studio": settings.create_missing_studios,
         "skip_single_name": settings.skip_single_name_performers,
     }
     changes, report = plan_changes(image, scraped, settings.field_strategies, create_options)
     if report:
         log.info(f"{label}: {describe_report(report)}")
+    resolve_studio(stash, settings, changes, state, label, log)
     resolve_creates(stash, settings, changes, state, label, log)
     if not changes:
         return "unchanged"
@@ -159,7 +216,8 @@ def run_task(stash, settings, log):
     log.info(
         f"processed {total}, updated {counts['updated']}, unchanged {counts['unchanged']}, "
         f"no result {counts['no result']}, failed {counts['failed']}, "
-        f"performers created {created['performers']}, tags created {created['tags']}{mode}"
+        f"performers created {created['performers']}, tags created {created['tags']}, "
+        f"studios created {created['studio']}{mode}"
     )
     return state
 

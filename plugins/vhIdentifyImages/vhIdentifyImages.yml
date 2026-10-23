@@ -47,6 +47,10 @@ settings:
     displayName: Tags option
     description: ignore, merge or overwrite. Empty means merge (add matched tags to the existing ones).
     type: STRING
+  fieldStudio:
+    displayName: Studio option
+    description: ignore, merge or overwrite. Empty means merge (set only when the image has no studio).
+    type: STRING
   createMissingPerformers:
     displayName: Create missing performers
     description: Create scraped performers that do not exist in Stash yet (with their scraped name, disambiguation and URLs), then link them. Off means they are dropped.
@@ -54,6 +58,10 @@ settings:
   createMissingTags:
     displayName: Create missing tags
     description: Create scraped tags that do not exist in Stash yet, then link them. Off means they are dropped.
+    type: BOOLEAN
+  createMissingStudios:
+    displayName: Create missing studios
+    description: Create a scraped studio that does not exist in Stash yet (with its scraped name, URLs and parent, creating a missing parent first), then link it. As in Identify, an existing parent gets the scraped parent's fields written to it. Off means the studio is dropped.
     type: BOOLEAN
   skipSingleNamePerformers:
     displayName: Skip single-name performers

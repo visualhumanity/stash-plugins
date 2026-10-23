@@ -132,15 +132,90 @@ def _relationship_changes(image, scraped, field, strategy, options, changes, rep
         changes[field] = (old, new)
 
 
+def studio_key(name):
+    """Key for reusing a created studio within a run (case-insensitive, as Stash matches names)."""
+    return ("studio", name.strip().lower())
+
+
+def studio_name(item):
+    return _text(item.get("name")) if item else ""
+
+
+def _studio_fields(item):
+    """The fields a scraped studio returned, as Stash's ToStudio / ToPartial map them.
+
+    Only non-blank values are included, so nothing is ever cleared.
+    """
+    fields = {"name": studio_name(item)}
+    urls = [u.strip() for u in item.get("urls") or [] if _text(u)]
+    if not urls and _text(item.get("url")):
+        urls = [item["url"].strip()]
+    if urls:
+        fields["urls"] = urls
+    if _text(item.get("details")):
+        fields["details"] = item["details"].strip()
+    aliases = [a.strip() for a in (item.get("aliases") or "").split(",") if a.strip()]
+    if aliases:
+        fields["aliases"] = aliases
+    return fields
+
+
+def _stored_parent_id(item):
+    parent = item.get("parent")
+    if parent and parent.get("stored_id") is not None:
+        return str(parent["stored_id"])
+    return None
+
+
+def studio_create_input(item, parent_id=None):
+    """Create input for a scraped studio. parent_id defaults to the scraped parent's stored ID."""
+    create_input = _studio_fields(item)
+    parent_id = parent_id or _stored_parent_id(item)
+    if parent_id:
+        create_input["parent_id"] = parent_id
+    return create_input
+
+
+def studio_update_input(item):
+    """Update input writing a matched scraped studio's fields to the existing studio."""
+    update = {"id": str(item["stored_id"])}
+    update.update(_studio_fields(item))
+    parent_id = _stored_parent_id(item)
+    if parent_id:
+        update["parent_id"] = parent_id
+    return update
+
+
+def _studio_change(image, scraped, strategy, create_missing, changes, report):
+    item = scraped.get("studio")
+    name = studio_name(item)
+    if not name:
+        return
+    current = image.get("studio")
+    old = {"id": str(current["id"]), "name": current.get("name")} if current else None
+    if not _should_set(strategy, old is not None):
+        return
+    if item.get("stored_id") is not None:
+        new_id = str(item["stored_id"])
+        if old is None or old["id"] != new_id:
+            changes["studio"] = (old, {"id": new_id, "name": name})
+        return
+    if not create_missing:
+        report.setdefault("unmatched", {})["studio"] = [name]
+        return
+    changes["studio"] = (old, {"id": None, "name": name, "key": studio_key(name), "create": item})
+
+
 def plan_changes(image, scraped, strategies, create_options=None):
     """Plan one image's update.
 
-    create_options: {"performers": bool, "tags": bool, "skip_single_name": bool}.
+    create_options: {"performers": bool, "tags": bool, "studio": bool, "skip_single_name": bool}.
 
     Returns (changes, report). changes maps field -> (old, new) for every
     field the update would change. Performer and tag lists hold
     {"id", "name"} entries; an entry still to be created has id None plus
-    "key" and "create" (the create input). report lists scraped items that
+    "key" and "create" (the create input). The studio is one such entry
+    (or None), whose "create" is the scraped studio. report lists scraped items that
     are not linked: "unmatched" (per field) and "skipped_single_name".
     """
     create_options = create_options or {}
@@ -149,6 +224,7 @@ def plan_changes(image, scraped, strategies, create_options=None):
     _url_changes(image, scraped, strategies["urls"], changes)
     for field in RELATIONSHIP_FIELDS:
         _relationship_changes(image, scraped, field, strategies[field], create_options, changes, report)
+    _studio_change(image, scraped, strategies["studio"], create_options.get("studio"), changes, report)
     return changes, report
 
 
@@ -168,12 +244,16 @@ def build_update_input(image_id, changes):
     for field, (_old, new) in changes.items():
         if field in RELATIONSHIP_FIELDS:
             update[RELATIONSHIP_FIELDS[field]] = [entry["id"] for entry in new]
+        elif field == "studio":
+            update["studio_id"] = new["id"]
         else:
             update[field] = new
     return update
 
 
 def _display(field, value):
+    if field == "studio":
+        return repr(value["name"] if value else None)
     if field in RELATIONSHIP_FIELDS:
         return repr([e["name"] if e.get("name") else f"id {e['id']}" for e in value])
     return repr(value)

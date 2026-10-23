@@ -55,7 +55,7 @@ class FakeStash:
         self.scrapes = scrapes or {}
         self.scrape_errors = set(scrape_errors)
         self.update_errors = set(update_errors)
-        # names whose performerCreate / tagCreate is rejected
+        # names whose performerCreate / tagCreate / studioCreate is rejected
         self.create_errors = set(create_errors)
         self.next_id = 100
         self.requests = []
@@ -109,7 +109,9 @@ class FakeStash:
             if image_id in self.scrape_errors:
                 return {"errors": [{"message": "scraper failed for this image"}]}
             return {"data": {"scrapeSingleImage": self.scrapes.get(image_id, [])}}
-        for mutation in ("performerCreate", "tagCreate"):
+        if "studioUpdate" in query:
+            return {"data": {"studioUpdate": {"id": variables["input"]["id"]}}}
+        for mutation in ("performerCreate", "tagCreate", "studioCreate"):
             if mutation in query:
                 name = variables["input"]["name"]
                 if name in self.create_errors:

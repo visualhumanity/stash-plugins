@@ -20,6 +20,7 @@ FIELD_SETTINGS = {
     "urls": "fieldUrls",
     "performers": "fieldPerformers",
     "tags": "fieldTags",
+    "studio": "fieldStudio",
 }
 
 
@@ -34,6 +35,7 @@ class Settings:
     field_strategies: dict
     create_missing_performers: bool
     create_missing_tags: bool
+    create_missing_studios: bool
     skip_single_name_performers: bool
     dry_run: bool
     image_limit: int
@@ -121,6 +123,7 @@ def parse_settings(raw):
         field_strategies=_field_strategies(raw, errors),
         create_missing_performers=_boolean(raw, "createMissingPerformers", errors),
         create_missing_tags=_boolean(raw, "createMissingTags", errors),
+        create_missing_studios=_boolean(raw, "createMissingStudios", errors),
         skip_single_name_performers=_boolean(raw, "skipSingleNamePerformers", errors),
         dry_run=_boolean(raw, "dryRun", errors),
         image_limit=_image_limit(raw, errors),
