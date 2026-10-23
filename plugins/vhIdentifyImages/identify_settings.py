@@ -32,6 +32,9 @@ class Settings:
     sources: tuple
     folder_prefixes: tuple
     field_strategies: dict
+    create_missing_performers: bool
+    create_missing_tags: bool
+    skip_single_name_performers: bool
     dry_run: bool
     image_limit: int
 
@@ -116,6 +119,9 @@ def parse_settings(raw):
         sources=(_scraper_id(raw, errors),),
         folder_prefixes=_folder_prefixes(raw, errors),
         field_strategies=_field_strategies(raw, errors),
+        create_missing_performers=_boolean(raw, "createMissingPerformers", errors),
+        create_missing_tags=_boolean(raw, "createMissingTags", errors),
+        skip_single_name_performers=_boolean(raw, "skipSingleNamePerformers", errors),
         dry_run=_boolean(raw, "dryRun", errors),
         image_limit=_image_limit(raw, errors),
     )

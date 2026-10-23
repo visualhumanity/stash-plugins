@@ -69,43 +69,105 @@ def _url_changes(image, scraped, strategy, changes):
             changes["urls"] = (old, merged)
 
 
-def _relationship_changes(image, scraped, field, strategy, changes, unmatched):
+def _text(value):
+    return value.strip() if isinstance(value, str) else ""
+
+
+def creation_key(field, create_input):
+    """Key for reusing a created entity within a run.
+
+    Names compare case-insensitively, as Stash matches them; a performer's
+    disambiguation is part of its identity.
+    """
+    key = (field, create_input["name"].lower())
+    if field == "performers":
+        key += (create_input.get("disambiguation", "").lower(),)
+    return key
+
+
+def _create_input(field, item):
+    """Create input for a scraped item with no stored ID, or None when it has no name."""
+    name = _text(item.get("name"))
+    if not name:
+        return None
+    create_input = {"name": name}
+    if field == "performers":
+        disambiguation = _text(item.get("disambiguation"))
+        if disambiguation:
+            create_input["disambiguation"] = disambiguation
+        urls = [u for u in item.get("urls") or [] if _text(u)]
+        if urls:
+            create_input["urls"] = urls
+    return create_input
+
+
+def _is_single_name(create_input):
+    # Identify's rule: no space in the name and no disambiguation
+    return " " not in create_input["name"] and not create_input.get("disambiguation")
+
+
+def _relationship_changes(image, scraped, field, strategy, options, changes, report):
     items = scraped.get(field) or []
     if not items or strategy == "ignore":
         return
-    old = [(str(e["id"]), e.get("name")) for e in image.get(field) or []]
+    old = [{"id": str(e["id"]), "name": e.get("name")} for e in image.get(field) or []]
     new = list(old) if strategy == "merge" else []
     for item in items:
         stored_id = item.get("stored_id")
-        if stored_id is None:
-            unmatched.setdefault(field, []).append(item.get("name"))
+        if stored_id is not None:
+            if str(stored_id) not in [e["id"] for e in new]:
+                new.append({"id": str(stored_id), "name": item.get("name")})
             continue
-        if str(stored_id) not in [entity_id for entity_id, _name in new]:
-            new.append((str(stored_id), item.get("name")))
-    if sorted(i for i, _ in old) != sorted(i for i, _ in new):
+        create_input = _create_input(field, item) if options.get(field) else None
+        if create_input is None:
+            report.setdefault("unmatched", {}).setdefault(field, []).append(item.get("name"))
+            continue
+        if field == "performers" and options.get("skip_single_name") and _is_single_name(create_input):
+            report.setdefault("skipped_single_name", []).append(create_input["name"])
+            continue
+        key = creation_key(field, create_input)
+        if key not in [e.get("key") for e in new]:
+            new.append({"id": None, "name": create_input["name"], "key": key, "create": create_input})
+    if any(e["id"] is None for e in new) or sorted(e["id"] for e in old) != sorted(e["id"] for e in new):
         changes[field] = (old, new)
 
 
-def plan_changes(image, scraped, strategies):
+def plan_changes(image, scraped, strategies, create_options=None):
     """Plan one image's update.
 
-    Returns (changes, unmatched): changes maps field -> (old, new) for every
-    field the update would change; unmatched maps performers/tags to the names
-    of scraped items with no stored ID, which are dropped.
+    create_options: {"performers": bool, "tags": bool, "skip_single_name": bool}.
+
+    Returns (changes, report). changes maps field -> (old, new) for every
+    field the update would change. Performer and tag lists hold
+    {"id", "name"} entries; an entry still to be created has id None plus
+    "key" and "create" (the create input). report lists scraped items that
+    are not linked: "unmatched" (per field) and "skipped_single_name".
     """
-    changes, unmatched = {}, {}
+    create_options = create_options or {}
+    changes, report = {}, {}
     _single_value_changes(image, scraped, strategies, changes)
     _url_changes(image, scraped, strategies["urls"], changes)
     for field in RELATIONSHIP_FIELDS:
-        _relationship_changes(image, scraped, field, strategies[field], changes, unmatched)
-    return changes, unmatched
+        _relationship_changes(image, scraped, field, strategies[field], create_options, changes, report)
+    return changes, report
+
+
+def pending_creates(changes):
+    """Entries in the planned changes that still need creating, as (field, entry)."""
+    return [
+        (field, entry)
+        for field in RELATIONSHIP_FIELDS
+        if field in changes
+        for entry in changes[field][1]
+        if entry["id"] is None
+    ]
 
 
 def build_update_input(image_id, changes):
     update = {"id": image_id}
     for field, (_old, new) in changes.items():
         if field in RELATIONSHIP_FIELDS:
-            update[RELATIONSHIP_FIELDS[field]] = [entity_id for entity_id, _name in new]
+            update[RELATIONSHIP_FIELDS[field]] = [entry["id"] for entry in new]
         else:
             update[field] = new
     return update
@@ -113,7 +175,7 @@ def build_update_input(image_id, changes):
 
 def _display(field, value):
     if field in RELATIONSHIP_FIELDS:
-        return repr([name if name else f"id {entity_id}" for entity_id, name in value])
+        return repr([e["name"] if e.get("name") else f"id {e['id']}" for e in value])
     return repr(value)
 
 
@@ -123,5 +185,10 @@ def describe_changes(changes):
     )
 
 
-def describe_unmatched(unmatched):
-    return ", ".join(f"{field}: {names!r}" for field, names in unmatched.items())
+def describe_report(report):
+    parts = []
+    for field, names in report.get("unmatched", {}).items():
+        parts.append(f"not linked, no existing match: {field}: {names!r}")
+    if report.get("skipped_single_name"):
+        parts.append(f"skipped single-name performers: {report['skipped_single_name']!r}")
+    return "; ".join(parts)

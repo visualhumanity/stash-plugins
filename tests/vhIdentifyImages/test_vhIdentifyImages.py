@@ -373,6 +373,168 @@ class RelationshipTests(unittest.TestCase):
         self.assertIn("u_example_user", text)
 
 
+def new_performer(name, urls=None, disambiguation=None):
+    item = {"stored_id": None, "name": name}
+    if urls is not None:
+        item["urls"] = urls
+    if disambiguation is not None:
+        item["disambiguation"] = disambiguation
+    return item
+
+
+PROFILE = "https://example.com/user/u_example_user"
+
+
+class CreateMissingTests(unittest.TestCase):
+    def run_images(self, settings, scrapes, images=None, **stub_args):
+        images = images or [image(i, f"{SUB}{i}.jpg") for i in sorted(scrapes, key=int)]
+        with FakeStash(images, settings=settings, scrapes=scrapes, **stub_args) as stub:
+            log = run_plugin(stub)
+        return stub, log
+
+    def test_missing_performer_is_created_with_name_and_urls_then_linked(self):
+        scrapes = {"1": [{"performers": [new_performer("u_example_user", urls=[PROFILE])]}]}
+        stub, log = self.run_images({"createMissingPerformers": True}, scrapes)
+        self.assertEqual(stub.creates("performerCreate"), [{"name": "u_example_user", "urls": [PROFILE]}])
+        self.assertEqual(stub.updates(), [{"id": "1", "performer_ids": ["101"]}])
+        self.assertIn("performers created 1, tags created 0", joined(log))
+
+    def test_disambiguation_is_sent_when_present(self):
+        scrapes = {"1": [{"performers": [new_performer("Example", disambiguation="example disambiguation")]}]}
+        stub, _ = self.run_images({"createMissingPerformers": True}, scrapes)
+        self.assertEqual(
+            stub.creates("performerCreate"), [{"name": "Example", "disambiguation": "example disambiguation"}]
+        )
+
+    def test_missing_tag_is_created_then_linked(self):
+        scrapes = {"1": [{"tags": [tag(None, "Example Tag"), tag("9", "Existing Tag")]}]}
+        stub, log = self.run_images({"createMissingTags": True}, scrapes)
+        self.assertEqual(stub.creates("tagCreate"), [{"name": "Example Tag"}])
+        self.assertEqual(stub.updates(), [{"id": "1", "tag_ids": ["101", "9"]}])
+        self.assertIn("performers created 0, tags created 1", joined(log))
+
+    def test_options_off_by_default_drop_unmatched_items(self):
+        scrapes = {"1": [{"title": "Example Image", "performers": [new_performer("u_example_user")], "tags": [tag(None, "Example Tag")]}]}
+        stub, log = self.run_images({}, scrapes)
+        self.assertEqual(stub.calls("performerCreate") + stub.calls("tagCreate"), [])
+        self.assertEqual(stub.updates(), [{"id": "1", "title": "Example Image"}])
+        self.assertIn("performers created 0, tags created 0", joined(log))
+
+    def test_each_option_only_creates_its_own_kind(self):
+        scrapes = {"1": [{"performers": [new_performer("u_example_user")], "tags": [tag(None, "Example Tag")]}]}
+        stub, _ = self.run_images({"createMissingTags": True}, scrapes)
+        self.assertEqual(stub.calls("performerCreate"), [])
+        self.assertEqual(len(stub.calls("tagCreate")), 1)
+        stub, _ = self.run_images({"createMissingPerformers": True}, scrapes)
+        self.assertEqual(len(stub.calls("performerCreate")), 1)
+        self.assertEqual(stub.calls("tagCreate"), [])
+
+    def test_same_missing_name_on_several_images_is_created_once(self):
+        scrapes = {
+            "1": [{"performers": [new_performer("u_example_user")], "tags": [tag(None, "Example Tag")]}],
+            "2": [{"performers": [new_performer("U_Example_User")], "tags": [tag(None, "example tag")]}],
+            "3": [{"performers": [new_performer("u_example_user"), new_performer("u_example_user")]}],
+        }
+        settings = {"createMissingPerformers": True, "createMissingTags": True}
+        stub, log = self.run_images(settings, scrapes)
+        self.assertEqual(len(stub.calls("performerCreate")), 1)
+        self.assertEqual(len(stub.calls("tagCreate")), 1)
+        performer_id, tag_id = "101", "102"
+        self.assertEqual(
+            stub.updates(),
+            [
+                {"id": "1", "performer_ids": [performer_id], "tag_ids": [tag_id]},
+                {"id": "2", "performer_ids": [performer_id], "tag_ids": [tag_id]},
+                {"id": "3", "performer_ids": [performer_id]},
+            ],
+        )
+        self.assertIn("performers created 1, tags created 1", joined(log))
+
+    def test_same_name_with_another_disambiguation_is_another_performer(self):
+        scrapes = {
+            "1": [{"performers": [new_performer("Example", disambiguation="one")]}],
+            "2": [{"performers": [new_performer("Example", disambiguation="two")]}],
+        }
+        stub, _ = self.run_images({"createMissingPerformers": True}, scrapes)
+        self.assertEqual(len(stub.calls("performerCreate")), 2)
+
+    def test_performer_without_a_name_is_not_created(self):
+        scrapes = {"1": [{"title": "Example Image", "performers": [new_performer(None), new_performer("  ")]}]}
+        stub, _ = self.run_images({"createMissingPerformers": True}, scrapes)
+        self.assertEqual(stub.calls("performerCreate"), [])
+
+    def test_existing_performers_are_never_edited(self):
+        img = image(1, SUB + "1.jpg", performers=[linked("5", "Existing")])
+        scrapes = {"1": [{"performers": [performer("5", "Existing"), performer("7", "Other"), new_performer("u_example_user")]}]}
+        stub, _ = self.run_images({"createMissingPerformers": True}, scrapes, images=[img])
+        names = {m["query"].split("(")[0].split()[-1] for m in stub.mutations()}
+        self.assertEqual(names, {"PerformerCreate", "ImageUpdate"})
+        self.assertEqual([c["name"] for c in stub.creates("performerCreate")], ["u_example_user"])
+        self.assertEqual(stub.updates(), [{"id": "1", "performer_ids": ["5", "7", "101"]}])
+
+    def test_skip_single_name_performers_off_by_default(self):
+        scrapes = {"1": [{"performers": [new_performer("u_example_user")]}]}
+        stub, _ = self.run_images({"createMissingPerformers": True}, scrapes)
+        self.assertEqual(len(stub.calls("performerCreate")), 1)
+
+    def test_skip_single_name_performers_matches_identify(self):
+        scrapes = {
+            "1": [
+                {
+                    "title": "Example Image",
+                    "performers": [
+                        new_performer("u_example_user"),
+                        new_performer("Example", disambiguation="example disambiguation"),
+                        new_performer("Example Performer"),
+                        performer("7", "Matched"),
+                    ],
+                }
+            ]
+        }
+        settings = {"createMissingPerformers": True, "skipSingleNamePerformers": True}
+        stub, log = self.run_images(settings, scrapes)
+        self.assertEqual([c["name"] for c in stub.creates("performerCreate")], ["Example", "Example Performer"])
+        # the rest of the image is still updated, as in Identify
+        self.assertEqual(
+            stub.updates(), [{"id": "1", "title": "Example Image", "performer_ids": ["101", "102", "7"]}]
+        )
+        self.assertIn("u_example_user", joined(log))
+
+    def test_create_failure_fails_the_image_and_the_run_continues(self):
+        scrapes = {
+            "1": [{"performers": [new_performer("u_bad_example")]}],
+            "2": [{"performers": [new_performer("u_example_user")]}],
+        }
+        stub, log = self.run_images({"createMissingPerformers": True}, scrapes, create_errors={"u_bad_example"})
+        self.assertEqual(stub.updates(), [{"id": "2", "performer_ids": ["101"]}])
+        self.assertIn("performerCreate rejected", joined(log, "e"))
+        self.assertIn("failed 1, performers created 1, tags created 0", joined(log))
+
+    def test_dry_run_logs_would_be_creates_and_sends_no_mutation(self):
+        scrapes = {
+            "1": [{"performers": [new_performer("u_example_user")], "tags": [tag(None, "Example Tag")]}],
+            "2": [{"performers": [new_performer("u_example_user")]}],
+        }
+        settings = {"dryRun": True, "createMissingPerformers": True, "createMissingTags": True}
+        stub, log = self.run_images(settings, scrapes)
+        self.assertEqual(stub.mutations(), [])
+        text = joined(log)
+        self.assertIn("would create performer 'u_example_user'", text)
+        self.assertIn("would create tag 'Example Tag'", text)
+        self.assertIn("performers: [] -> ['u_example_user']", text)
+        self.assertEqual(text.count("would create performer"), 1)
+        self.assertIn("updated 2", text)
+        self.assertIn("performers created 1, tags created 1", text)
+
+    def test_invalid_boolean_settings_are_refused(self):
+        for setting in ("createMissingPerformers", "createMissingTags", "skipSingleNamePerformers"):
+            with self.subTest(setting=setting):
+                stub, log = self.run_images({setting: "on"}, {"1": [{"title": "Example Image"}]})
+                self.assertIn(setting, joined(log, "e"))
+                self.assertEqual(stub.calls("scrapeSingleImage"), [])
+                self.assertEqual(stub.mutations(), [])
+
+
 class DryRunTests(unittest.TestCase):
     def test_dry_run_sends_no_update_and_logs_old_and_new_values(self):
         img = image(1, SUB + "a.jpg", title="Old Title")
@@ -565,6 +727,9 @@ class ManifestTests(unittest.TestCase):
             "fieldUrls": "STRING",
             "fieldPerformers": "STRING",
             "fieldTags": "STRING",
+            "createMissingPerformers": "BOOLEAN",
+            "createMissingTags": "BOOLEAN",
+            "skipSingleNamePerformers": "BOOLEAN",
             "dryRun": "BOOLEAN",
             "imageLimit": "NUMBER",
         }

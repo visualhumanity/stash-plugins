@@ -41,12 +41,24 @@ settings:
     type: STRING
   fieldPerformers:
     displayName: Performers option
-    description: ignore, merge or overwrite. Empty means merge (add matched performers to the existing ones). Only performers that already exist in Stash are linked.
+    description: ignore, merge or overwrite. Empty means merge (add matched performers to the existing ones).
     type: STRING
   fieldTags:
     displayName: Tags option
-    description: ignore, merge or overwrite. Empty means merge (add matched tags to the existing ones). Only tags that already exist in Stash are linked.
+    description: ignore, merge or overwrite. Empty means merge (add matched tags to the existing ones).
     type: STRING
+  createMissingPerformers:
+    displayName: Create missing performers
+    description: Create scraped performers that do not exist in Stash yet (with their scraped name, disambiguation and URLs), then link them. Off means they are dropped.
+    type: BOOLEAN
+  createMissingTags:
+    displayName: Create missing tags
+    description: Create scraped tags that do not exist in Stash yet, then link them. Off means they are dropped.
+    type: BOOLEAN
+  skipSingleNamePerformers:
+    displayName: Skip single-name performers
+    description: Do not create a performer whose name has no space and who has no disambiguation, as in Identify. Keep off for Reddit uploaders such as u_example_user.
+    type: BOOLEAN
   dryRun:
     displayName: Dry run
     description: Log each image's changes (field, old value, new value) without writing anything.

@@ -38,6 +38,16 @@ query ScrapeSingleImage($source: ScraperSourceInput!, $input: ScrapeSingleImageI
   }
 }"""
 
+PERFORMER_CREATE = """
+mutation PerformerCreate($input: PerformerCreateInput!) {
+  performerCreate(input: $input) { id }
+}"""
+
+TAG_CREATE = """
+mutation TagCreate($input: TagCreateInput!) {
+  tagCreate(input: $input) { id }
+}"""
+
 IMAGE_UPDATE = """
 mutation ImageUpdate($input: ImageUpdateInput!) {
   imageUpdate(input: $input) { id }
@@ -113,6 +123,12 @@ class StashClient:
     def scrape_image(self, scraper_id, image_id):
         variables = {"source": {"scraper_id": scraper_id}, "input": {"image_id": image_id}}
         return self.call(SCRAPE_IMAGE, variables)["scrapeSingleImage"] or []
+
+    def create(self, field, create_input):
+        """Create a performer or tag (field 'performers' or 'tags') and return its ID."""
+        if field == "performers":
+            return self.call(PERFORMER_CREATE, {"input": create_input})["performerCreate"]["id"]
+        return self.call(TAG_CREATE, {"input": create_input})["tagCreate"]["id"]
 
     def update_image(self, update_input):
         return self.call(IMAGE_UPDATE, {"input": update_input})["imageUpdate"]

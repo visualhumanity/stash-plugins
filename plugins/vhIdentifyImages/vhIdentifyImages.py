@@ -15,8 +15,9 @@ from identify_client import StashClient, image_path  # noqa: E402
 from identify_rules import (  # noqa: E402
     build_update_input,
     describe_changes,
-    describe_unmatched,
+    describe_report,
     has_result,
+    pending_creates,
     plan_changes,
 )
 from identify_settings import SettingsError, parse_settings  # noqa: E402
@@ -66,16 +67,67 @@ def scrape(stash, sources, image_id):
     return None
 
 
-def process_image(stash, settings, image_id, label, log):
+class RunState:
+    """What one run has done so far: outcome counts and entities created (or, in a dry run, planned)."""
+
+    def __init__(self):
+        self.counts = {"updated": 0, "unchanged": 0, "no result": 0, "failed": 0}
+        self.created = {"performers": 0, "tags": 0}
+        # creation key -> new ID (None in a dry run)
+        self.created_ids = {}
+
+
+SINGULAR = {"performers": "performer", "tags": "tag"}
+
+
+def resolve_creates(stash, settings, changes, state, label, log):
+    """Give every to-be-created performer or tag an ID, creating each name once per run."""
+    for field, entry in pending_creates(changes):
+        key = entry["key"]
+        if key not in state.created_ids:
+            if settings.dry_run:
+                log.info(f"{label}: would create {SINGULAR[field]} {entry['name']!r}")
+                state.created_ids[key] = None
+            else:
+                new_id = str(stash.create(field, entry["create"]))
+                log.info(f"{label}: created {SINGULAR[field]} {entry['name']!r} (id {new_id})")
+                state.created_ids[key] = new_id
+            state.created[field] += 1
+        entry["id"] = state.created_ids[key]
+
+    if settings.dry_run:
+        return
+    # a reused ID may already be linked; drop duplicates and changes that came to nothing
+    for field in ("performers", "tags"):
+        if field not in changes:
+            continue
+        old, new = changes[field]
+        unique = []
+        for entry in new:
+            if entry["id"] not in [e["id"] for e in unique]:
+                unique.append(entry)
+        if sorted(e["id"] for e in old) == sorted(e["id"] for e in unique):
+            del changes[field]
+        else:
+            changes[field] = (old, unique)
+
+
+def process_image(stash, settings, image_id, label, state, log):
     """Scrape and apply one image. Returns 'updated', 'unchanged' or 'no result'."""
     image = stash.find_image(image_id)
     scraped = scrape(stash, settings.sources, image_id)
     if scraped is None:
         log.info(f"{label}: no scrape result")
         return "no result"
-    changes, unmatched = plan_changes(image, scraped, settings.field_strategies)
-    if unmatched:
-        log.info(f"{label}: not linked, no existing match: {describe_unmatched(unmatched)}")
+    create_options = {
+        "performers": settings.create_missing_performers,
+        "tags": settings.create_missing_tags,
+        "skip_single_name": settings.skip_single_name_performers,
+    }
+    changes, report = plan_changes(image, scraped, settings.field_strategies, create_options)
+    if report:
+        log.info(f"{label}: {describe_report(report)}")
+    resolve_creates(stash, settings, changes, state, label, log)
     if not changes:
         return "unchanged"
     if settings.dry_run:
@@ -91,23 +143,25 @@ def run_task(stash, settings, log):
     mode = " (dry run, nothing is written)" if settings.dry_run else ""
     log.info(f"identifying {len(images)} image(s) with {', '.join(settings.sources)}{mode}")
 
-    counts = {"updated": 0, "unchanged": 0, "no result": 0, "failed": 0}
+    state = RunState()
     total = len(images)
     for index, (image_id, path) in enumerate(images, start=1):
         label = f"image {image_id} ({path})"
         try:
-            outcome = process_image(stash, settings, image_id, label, log)
+            outcome = process_image(stash, settings, image_id, label, state, log)
         except Exception as exc:
             outcome = "failed"
             log.error(f"{label} failed: {exc}")
-        counts[outcome] += 1
+        state.counts[outcome] += 1
         log.progress(index / total)
 
+    counts, created = state.counts, state.created
     log.info(
         f"processed {total}, updated {counts['updated']}, unchanged {counts['unchanged']}, "
-        f"no result {counts['no result']}, failed {counts['failed']}{mode}"
+        f"no result {counts['no result']}, failed {counts['failed']}, "
+        f"performers created {created['performers']}, tags created {created['tags']}{mode}"
     )
-    return counts
+    return state
 
 
 def main():

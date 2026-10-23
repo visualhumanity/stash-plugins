@@ -9,7 +9,7 @@ Does for images what Stash's Identify task does for scenes. A task goes through 
 Settings > Tasks > Plugin Tasks > VH - Identify Images > **Identify images**. Progress shows in Stash's task list. Each changed image is logged (Settings > Logs) as field, old value and new value, and the run ends with a summary:
 
 ```
-processed 120, updated 95, unchanged 20, no result 4, failed 1
+processed 120, updated 95, unchanged 20, no result 4, failed 1, performers created 3, tags created 0
 ```
 
 - **updated**: at least one field changed (with Dry run on: would change).
@@ -34,6 +34,9 @@ Stash plugin settings have no stored defaults: an empty setting means the defaul
 | URLs option | text | `merge` | As above, for URLs. See list fields. |
 | Performers option | text | `merge` | As above, for performers. See list fields. |
 | Tags option | text | `merge` | As above, for tags. See list fields. |
+| Create missing performers | on/off | off | Create scraped performers that are not in Stash yet, then link them. See creating missing performers and tags. |
+| Create missing tags | on/off | off | Create scraped tags that are not in Stash yet, then link them. |
+| Skip single-name performers | on/off | off | Do not create a performer whose name has no space and who has no disambiguation. |
 | Dry run | on/off | off | Compute and log every change without writing anything. |
 | Image limit | number | 0 (no limit) | Stop after this many images, in path order. |
 
@@ -61,8 +64,18 @@ A field the scraper returns nothing for (missing or blank) is never touched, und
 
 - An empty scraped list changes nothing, under any option.
 - URLs under `overwrite`: as in Identify, the list is replaced only when the scrape has a URL the image does not have yet.
-- Performers and tags are linked only when Stash matched the scraped item to an existing performer or tag (the same matching the image Scrape menu shows). Unmatched items are dropped and logged as "not linked, no existing match". Nothing is created, and existing performers and tags are never edited.
-- Performers and tags under `overwrite`: as in Identify, the links are replaced by the matched items only. If the scrape returns performers but none of them match, the image's performers are cleared. Same for tags.
+- Performers and tags that Stash matched to an existing performer or tag (the same matching the image Scrape menu shows) are linked. Existing performers and tags are never edited.
+- Unmatched items are created and linked when the matching create option is on (see below). Otherwise they are dropped and logged as "not linked, no existing match".
+- Performers and tags under `overwrite`: as in Identify, the links are replaced by the matched and created items only. If the scrape returns performers but none of them match and none are created, the image's performers are cleared. Same for tags.
+
+### Creating missing performers and tags
+
+- A created performer gets the scraped name, disambiguation (when the scraper gives one) and URLs. A created tag gets the scraped name.
+- Each missing name is created once per run and reused for every later image that has it. Names compare without regard to case, as Stash matches them. Two performers with the same name and different disambiguations are different performers.
+- A scraped performer or tag without a name is never created.
+- If a create fails, the image is counted as failed and the run carries on.
+- The end summary adds `performers created` and `tags created`. With Dry run on, these count what would be created, and each would-be create is logged.
+- **Skip single-name performers** follows Identify's rule: with it on, a performer whose name has no space and who has no disambiguation is not created (the rest of the image is still updated). Reddit uploader names such as `u_example_user` have no space, so keep this off when scraping Reddit images, or no uploader is ever created.
 
 ## Mapping to Identify
 
@@ -70,10 +83,12 @@ A field the scraper returns nothing for (missing or blank) is never touched, und
 |---|---|
 | Sources list | Scraper ID (one source for now; the task already goes through an ordered list and uses the first result) |
 | Field options: Title, Code, Details, Date, URLs, Performers, Tags | Title, Code, Details, Date, URLs, Performers, Tags options |
+| Create missing (performers, tags) | Create missing performers, Create missing tags |
+| Skip single-name performers | Same (the "skipped" tag option is not supported) |
 | Default strategy for an unset field: merge | Same |
 | Paths to process | Folder prefixes |
 
 ## Known limitations
 
-- The studio from the scrape is not applied yet, and missing performers and tags are not created yet.
+- The studio from the scrape is not applied yet.
 - Stash-box sources are not supported (Stash's single-image scrape has no stash-box support).

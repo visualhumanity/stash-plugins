@@ -46,13 +46,18 @@ def image(image_id, path, **fields):
 
 
 class FakeStash:
-    def __init__(self, images=(), settings=None, scrapes=None, scrape_errors=(), update_errors=()):
+    def __init__(
+        self, images=(), settings=None, scrapes=None, scrape_errors=(), update_errors=(), create_errors=()
+    ):
         self.images = {img["id"]: img for img in images}
         self.settings = settings
         # image id -> list of ScrapedImage dicts (missing means an empty list)
         self.scrapes = scrapes or {}
         self.scrape_errors = set(scrape_errors)
         self.update_errors = set(update_errors)
+        # names whose performerCreate / tagCreate is rejected
+        self.create_errors = set(create_errors)
+        self.next_id = 100
         self.requests = []
         stub = self
 
@@ -104,6 +109,13 @@ class FakeStash:
             if image_id in self.scrape_errors:
                 return {"errors": [{"message": "scraper failed for this image"}]}
             return {"data": {"scrapeSingleImage": self.scrapes.get(image_id, [])}}
+        for mutation in ("performerCreate", "tagCreate"):
+            if mutation in query:
+                name = variables["input"]["name"]
+                if name in self.create_errors:
+                    return {"errors": [{"message": f"{mutation} rejected"}]}
+                self.next_id += 1
+                return {"data": {mutation: {"id": str(self.next_id)}}}
         if "imageUpdate" in query:
             update = variables["input"]
             if update["id"] in self.update_errors:
@@ -141,6 +153,9 @@ class FakeStash:
 
     def mutations(self):
         return [b for b in (r["body"] for r in self.requests) if b["query"].lstrip().startswith("mutation")]
+
+    def creates(self, mutation):
+        return [b["variables"]["input"] for b in self.calls(mutation)]
 
     def updates(self):
         return [b["variables"]["input"] for b in self.calls("imageUpdate")]
