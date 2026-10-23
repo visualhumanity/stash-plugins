@@ -195,6 +195,17 @@ def process_image(stash, settings, image_id, label, state, log):
     return "updated"
 
 
+def check_sources(stash, sources):
+    """Return an error naming scraperId when a source cannot scrape an existing image, else None."""
+    scrapers = stash.image_scrapers()
+    for source in sources:
+        if source not in scrapers:
+            return f"scraperId: no image scraper with ID {source!r} is installed"
+        if "FRAGMENT" not in scrapers[source]:
+            return f"scraperId: scraper {source!r} cannot scrape an existing image (it has no imageByFragment)"
+    return None
+
+
 def run_task(stash, settings, log):
     images = stash.find_images(settings.folder_prefixes, settings.image_limit)
     mode = " (dry run, nothing is written)" if settings.dry_run else ""
@@ -203,7 +214,7 @@ def run_task(stash, settings, log):
     state = RunState()
     total = len(images)
     for index, (image_id, path) in enumerate(images, start=1):
-        label = f"image {image_id} ({path})"
+        label = f"image {image_id} ({path or 'no file'})"
         try:
             outcome = process_image(stash, settings, image_id, label, state, log)
         except Exception as exc:
@@ -242,6 +253,15 @@ def main():
         settings = parse_settings(raw_settings)
     except SettingsError as exc:
         log.error(f"refusing to run, invalid settings: {exc}")
+        return
+
+    try:
+        problem = check_sources(stash, settings.sources)
+    except Exception as exc:
+        log.error(f"could not list scrapers: {exc}")
+        return
+    if problem:
+        log.error(f"refusing to run, invalid settings: {problem}")
         return
 
     try:

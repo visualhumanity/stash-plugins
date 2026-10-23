@@ -28,6 +28,18 @@ class _Server(HTTPServer):
         self.server_name, self.server_port = self.server_address[:2]
 
 
+def image_scraper(scraper_id, supported=("FRAGMENT",)):
+    return {"id": scraper_id, "name": scraper_id, "image": {"supported_scrapes": list(supported)}}
+
+
+DEFAULT_SCRAPERS = (image_scraper("GalleryDlReddit"), image_scraper("ExampleScraper"))
+
+
+def _path(img):
+    files = img.get("visual_files") or []
+    return files[0]["path"] if files else None
+
+
 def image(image_id, path, **fields):
     record = {
         "id": str(image_id),
@@ -39,7 +51,7 @@ def image(image_id, path, **fields):
         "urls": [],
         "performers": [],
         "tags": [],
-        "visual_files": [{"path": path}],
+        "visual_files": [{"path": path}] if path is not None else [],
     }
     record.update(fields)
     return record
@@ -47,7 +59,14 @@ def image(image_id, path, **fields):
 
 class FakeStash:
     def __init__(
-        self, images=(), settings=None, scrapes=None, scrape_errors=(), update_errors=(), create_errors=()
+        self,
+        images=(),
+        settings=None,
+        scrapes=None,
+        scrape_errors=(),
+        update_errors=(),
+        create_errors=(),
+        scrapers=DEFAULT_SCRAPERS,
     ):
         self.images = {img["id"]: img for img in images}
         self.settings = settings
@@ -58,6 +77,8 @@ class FakeStash:
         # names whose performerCreate / tagCreate / studioCreate is rejected
         self.create_errors = set(create_errors)
         self.next_id = 100
+        # what listScrapers(types: [IMAGE]) returns
+        self.scrapers = list(scrapers)
         self.requests = []
         stub = self
 
@@ -100,6 +121,9 @@ class FakeStash:
         if "configuration" in query:
             plugins = {} if self.settings is None else {PLUGIN_ID: self.settings}
             return {"data": {"configuration": {"plugins": plugins}}}
+        if "listScrapers" in query:
+            assert variables.get("types") == ["IMAGE"], variables
+            return {"data": {"listScrapers": self.scrapers}}
         if "findImages" in query:
             return {"data": {"findImages": self.find_images(variables)}}
         if "findImage" in query:
@@ -128,12 +152,13 @@ class FakeStash:
     def find_images(self, variables):
         image_filter = variables.get("image_filter") or {}
         find_filter = variables.get("filter") or {}
-        matches = sorted(self.images.values(), key=lambda img: img["visual_files"][0]["path"])
+        matches = sorted(self.images.values(), key=lambda img: _path(img) or "")
         path = image_filter.get("path")
         if path:
             assert path["modifier"] == "MATCHES_REGEX", path
             pattern = re.compile(path["value"])
-            matches = [img for img in matches if pattern.search(img["visual_files"][0]["path"])]
+            # an image with no file never matches a path filter
+            matches = [img for img in matches if _path(img) is not None and pattern.search(_path(img))]
         page, per_page = find_filter.get("page", 1), find_filter.get("per_page", 25)
         start = (page - 1) * per_page
         window = matches[start : start + per_page]

@@ -25,8 +25,8 @@ Stash plugin settings have no stored defaults: an empty setting means the defaul
 
 | Setting | Type | Default | Meaning |
 |---|---|---|---|
-| Scraper ID | text | `GalleryDlReddit` | ID of the image scraper to run. Use a scraper that appears in the image Scrape menu. |
-| Folder prefixes | text | all images | Only images whose file path starts with one of these are processed. Separate several with `\|`, for example `/data/example/reddit/\|/data/example/twitter/`. Spaces around each entry are trimmed. The match is a plain "starts with", so end a folder with `/` to avoid also matching `/data/example/reddit2/`. |
+| Scraper ID | text | `GalleryDlReddit` | ID of the image scraper to run. It must be installed and able to scrape an existing image (an `imageByFragment` scraper, the kind the image Scrape menu uses); the run stops before touching any image if it is not. |
+| Folder prefixes | text | all images | Only images whose file path starts with one of these are processed. Images with no file are only processed when this is empty. Separate several with `\|`, for example `/data/example/reddit/\|/data/example/twitter/`. Spaces around each entry are trimmed. The match is a plain "starts with", so end a folder with `/` to avoid also matching `/data/example/reddit2/`. |
 | Title option | text | `merge` | `ignore`, `merge` or `overwrite` (any case). See field options. |
 | Code option | text | `merge` | As above, for the studio code. |
 | Details option | text | `merge` | As above, for details. |
@@ -42,7 +42,7 @@ Stash plugin settings have no stored defaults: an empty setting means the defaul
 | Dry run | on/off | off | Compute and log every change without writing anything. |
 | Image limit | number | 0 (no limit) | Stop after this many images, in path order. |
 
-Every setting is checked before the run starts. An invalid value (for example a field option of `replace`, or a limit that is not a whole number) stops the run before anything is written, with an error naming the setting.
+Every setting is checked before the run starts, including that the scraper ID names an installed image scraper. An invalid value (for example a field option of `replace`, or a limit that is not a whole number) stops the run before anything is written, with an error naming the setting.
 
 ## Field options
 

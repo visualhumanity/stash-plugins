@@ -11,6 +11,11 @@ query PluginConfiguration($include: [ID!]) {
   configuration { plugins(include: $include) }
 }"""
 
+LIST_IMAGE_SCRAPERS = """
+query ListImageScrapers($types: [ScrapeContentType!]!) {
+  listScrapers(types: $types) { id image { supported_scrapes } }
+}"""
+
 FIND_IMAGE_IDS = """
 query FindImageIds($image_filter: ImageFilterType, $filter: FindFilterType) {
   findImages(image_filter: $image_filter, filter: $filter) {
@@ -108,6 +113,11 @@ class StashClient:
     def plugin_settings(self, plugin_id):
         data = self.call(CONFIGURATION, {"include": [plugin_id]})
         return (data["configuration"]["plugins"] or {}).get(plugin_id)
+
+    def image_scrapers(self):
+        """Map each installed image scraper's ID to its supported scrape types (NAME, FRAGMENT, URL)."""
+        scrapers = self.call(LIST_IMAGE_SCRAPERS, {"types": ["IMAGE"]})["listScrapers"] or []
+        return {s["id"]: (s.get("image") or {}).get("supported_scrapes") or [] for s in scrapers}
 
     def find_images(self, prefixes, limit):
         """List (id, path) for images under the prefixes, sorted by path, up to limit (0 = all)."""

@@ -8,7 +8,7 @@ and the log that comes back.
 import os
 import unittest
 
-from .stash_stub import PLUGIN_DIR, FakeStash, image, run_plugin
+from .stash_stub import PLUGIN_DIR, FakeStash, image, image_scraper, run_plugin
 
 try:
     import yaml
@@ -59,6 +59,43 @@ class ScrapeSourceTests(unittest.TestCase):
         with FakeStash([image(1, SUB + "a.jpg")], settings={"scraperId": " ExampleScraper "}) as stub:
             run_plugin(stub)
         self.assertEqual(stub.scrape_sources(), [{"scraper_id": "ExampleScraper"}])
+
+    def test_unknown_scraper_id_stops_the_run_before_listing_images(self):
+        with FakeStash([image(1, SUB + "a.jpg")], settings={"scraperId": "MissingScraper"}) as stub:
+            log = run_plugin(stub)
+        self.assertIn("scraperId", joined(log, "e"))
+        self.assertIn("MissingScraper", joined(log, "e"))
+        self.assertEqual(stub.calls("findImages"), [])
+        self.assertEqual(stub.calls("scrapeSingleImage"), [])
+        self.assertEqual(stub.mutations(), [])
+
+    def test_scraper_without_image_fragment_scraping_stops_the_run(self):
+        scrapers = [image_scraper("GalleryDlReddit", supported=("URL",))]
+        with FakeStash([image(1, SUB + "a.jpg")], settings={}, scrapers=scrapers) as stub:
+            log = run_plugin(stub)
+        self.assertIn("scraperId", joined(log, "e"))
+        self.assertEqual(stub.calls("findImages"), [])
+        self.assertEqual(stub.calls("scrapeSingleImage"), [])
+
+    def test_scraper_check_asks_for_image_scrapers(self):
+        with FakeStash([image(1, SUB + "a.jpg")], settings={}) as stub:
+            run_plugin(stub)
+        self.assertEqual(len(stub.calls("listScrapers")), 1)
+
+    def test_image_with_no_file_is_still_scraped_by_id(self):
+        images = [image(1, None), image(2, SUB + "b.jpg")]
+        scrapes = {"1": [{"title": "Example Image"}], "2": [{"title": "Example Image"}]}
+        with FakeStash(images, settings={}, scrapes=scrapes) as stub:
+            log = run_plugin(stub)
+        self.assertEqual(sorted(stub.scraped_ids()), ["1", "2"])
+        self.assertEqual(sorted(u["id"] for u in stub.updates()), ["1", "2"])
+        self.assertIn("image 1 (no file)", joined(log))
+
+    def test_image_with_no_file_never_matches_a_folder_prefix(self):
+        images = [image(1, None), image(2, SUB + "b.jpg")]
+        with FakeStash(images, settings={"folderPrefixes": SUB}) as stub:
+            run_plugin(stub)
+        self.assertEqual(stub.scraped_ids(), ["2"])
 
     def test_first_scrape_result_is_used(self):
         scrapes = {"1": [{"title": "First"}, {"title": "Second"}]}
