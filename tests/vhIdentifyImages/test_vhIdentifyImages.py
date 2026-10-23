@@ -1057,6 +1057,92 @@ class ScanHookTests(unittest.TestCase):
         self.assertEqual(stub.mutations(), [])
 
 
+class CreateRaceTests(unittest.TestCase):
+    """A parallel scan can create the same name between this plugin's scrape and its create."""
+
+    SETTINGS = {"createMissingPerformers": True, "createMissingTags": True, "createMissingStudios": True}
+
+    def run_one(self, scrape, entities, settings=None, args=None):
+        with FakeStash(
+            [image(1, SUB + "1.jpg")], settings=settings or self.SETTINGS, scrapes={"1": [scrape]}, entities=entities
+        ) as stub:
+            log = run_plugin(stub, args=args)
+        return stub, log
+
+    def test_existing_performer_tag_and_studio_are_linked_after_a_name_clash(self):
+        entities = {
+            "performers": [{"id": "50", "name": "U_Example_User", "disambiguation": None}],
+            "tags": [{"id": "60", "name": "example tag"}],
+            "studios": [{"id": "70", "name": "Reddit"}, {"id": "71", "name": "R_EXAMPLESUB"}],
+        }
+        scrape = {
+            "performers": [new_performer("u_example_user")],
+            "tags": [tag(None, "Example Tag")],
+            "studio": studio("r_ExampleSub", parent=studio("Reddit")),
+        }
+        stub, log = self.run_one(scrape, entities)
+        self.assertEqual(stub.updates(), [{"id": "1", "performer_ids": ["50"], "tag_ids": ["60"], "studio_id": "71"}])
+        self.assertIn("performers created 0, tags created 0, studios created 0", joined(log))
+        self.assertIn("linked existing performer 'U_Example_User' (id 50)", joined(log))
+        self.assertEqual(joined(log, "e"), "")
+
+    def test_existing_parent_is_used_when_its_create_clashes(self):
+        entities = {"studios": [{"id": "70", "name": "Reddit"}]}
+        stub, _ = self.run_one({"studio": studio("r_ExampleSub", parent=studio("reddit"))}, entities)
+        self.assertEqual(stub.creates("studioCreate")[-1], {"name": "r_ExampleSub", "parent_id": "70"})
+        self.assertEqual(stub.updates(), [{"id": "1", "studio_id": "101"}])
+
+    def test_lookup_compares_the_exact_name_not_like_wildcards(self):
+        # LIKE would match "uXexample_user" for "u_example_user"; that is not the same name
+        entities = {"performers": [{"id": "50", "name": "u_example_user", "disambiguation": None}, {"id": "51", "name": "uXexample_user", "disambiguation": None}]}
+        stub, _ = self.run_one({"performers": [new_performer("u_example_user")]}, entities)
+        self.assertEqual(stub.updates(), [{"id": "1", "performer_ids": ["50"]}])
+
+    def test_performer_lookup_matches_the_disambiguation(self):
+        entities = {
+            "performers": [
+                {"id": "50", "name": "Example", "disambiguation": "one"},
+                {"id": "51", "name": "Example", "disambiguation": "two"},
+            ]
+        }
+        stub, _ = self.run_one({"performers": [new_performer("Example", disambiguation="TWO")]}, entities)
+        self.assertEqual(stub.updates(), [{"id": "1", "performer_ids": ["51"]}])
+
+    def test_clash_with_no_single_exact_match_fails_the_image(self):
+        # two existing tags match ignoring case, so the clash cannot be resolved
+        entities = {"tags": [{"id": "60", "name": "Example Tag"}, {"id": "61", "name": "example tag"}]}
+        stub, log = self.run_one({"title": "Example Image", "tags": [tag(None, "EXAMPLE TAG")]}, entities)
+        self.assertEqual(stub.updates(), [])
+        self.assertIn("already exists", joined(log, "e"))
+        self.assertIn("failed 1", joined(log))
+
+    def test_other_create_errors_still_fail_the_image(self):
+        with FakeStash(
+            [image(1, SUB + "1.jpg")],
+            settings=self.SETTINGS,
+            scrapes={"1": [{"performers": [new_performer("u_bad_example")]}]},
+            create_errors={"u_bad_example"},
+        ) as stub:
+            log = run_plugin(stub)
+        self.assertEqual(stub.calls("findPerformers"), [])
+        self.assertIn("failed 1", joined(log))
+
+    def test_linked_entity_is_reused_for_later_images_without_another_create(self):
+        entities = {"performers": [{"id": "50", "name": "u_example_user", "disambiguation": None}]}
+        images = [image(1, SUB + "1.jpg"), image(2, SUB + "2.jpg")]
+        scrapes = {"1": [{"performers": [new_performer("u_example_user")]}], "2": [{"performers": [new_performer("u_example_user")]}]}
+        with FakeStash(images, settings=self.SETTINGS, scrapes=scrapes, entities=entities) as stub:
+            run_plugin(stub)
+        self.assertEqual(len(stub.calls("performerCreate")), 1)
+        self.assertEqual([u["performer_ids"] for u in stub.updates()], [["50"], ["50"]])
+
+    def test_scan_hook_links_after_a_clash(self):
+        entities = {"performers": [{"id": "50", "name": "u_example_user", "disambiguation": None}]}
+        settings = dict(self.SETTINGS, scrapeOnScan=True)
+        stub, _ = self.run_one({"performers": [new_performer("u_example_user")]}, entities, settings=settings, args=hook_args("1"))
+        self.assertEqual(stub.updates(), [{"id": "1", "performer_ids": ["50"]}])
+
+
 class DryRunTests(unittest.TestCase):
     def test_dry_run_sends_no_update_and_logs_old_and_new_values(self):
         img = image(1, SUB + "a.jpg", title="Old Title")

@@ -15,6 +15,7 @@ from identify_client import StashClient, image_path  # noqa: E402
 from identify_rules import (  # noqa: E402
     add_organized,
     build_update_input,
+    fold_case,
     describe_changes,
     describe_report,
     has_result,
@@ -91,6 +92,35 @@ class RunState:
 SINGULAR = {"performers": "performer", "tags": "tag", "studio": "studio"}
 
 
+def _same_entity(field, entity, create_input):
+    if fold_case(entity.get("name") or "") != fold_case(create_input["name"]):
+        return False
+    if field == "performers":
+        return fold_case(entity.get("disambiguation") or "") == fold_case(create_input.get("disambiguation") or "")
+    return True
+
+
+def create_or_link(stash, field, create_input, label, log):
+    """Create a performer, tag or studio; return (id, created).
+
+    When the create fails because the name already exists (a parallel scan
+    hook or another client created it after the scrape), link the existing
+    one instead, if exactly one has that exact name (ASCII case ignored, as
+    Stash matches names). Otherwise the create error is raised.
+    """
+    try:
+        return str(stash.create(field, create_input)), True
+    except RuntimeError as exc:
+        if "already exists" not in str(exc):
+            raise
+        found = [e for e in stash.find_by_name(field, create_input["name"]) if _same_entity(field, e, create_input)]
+        if len(found) != 1:
+            raise
+        entity = found[0]
+        log.info(f"{label}: linked existing {SINGULAR[field]} {entity['name']!r} (id {entity['id']}) after a name clash")
+        return str(entity["id"]), False
+
+
 def resolve_creates(stash, settings, changes, state, label, log):
     """Give every to-be-created performer or tag an ID, creating each name once per run."""
     for field, entry in pending_creates(changes):
@@ -99,11 +129,13 @@ def resolve_creates(stash, settings, changes, state, label, log):
             if settings.dry_run:
                 log.info(f"{label}: would create {SINGULAR[field]} {entry['name']!r}")
                 state.created_ids[key] = None
+                state.created[field] += 1
             else:
-                new_id = str(stash.create(field, entry["create"]))
-                log.info(f"{label}: created {SINGULAR[field]} {entry['name']!r} (id {new_id})")
+                new_id, created = create_or_link(stash, field, entry["create"], label, log)
+                if created:
+                    log.info(f"{label}: created {SINGULAR[field]} {entry['name']!r} (id {new_id})")
+                    state.created[field] += 1
                 state.created_ids[key] = new_id
-            state.created[field] += 1
         entry["id"] = state.created_ids[key]
 
     if settings.dry_run:
@@ -131,11 +163,13 @@ def _create_studio(stash, settings, item, parent_id, state, label, log):
         if settings.dry_run:
             log.info(f"{label}: would create studio {create_input['name']!r}")
             state.created_ids[key] = None
+            state.created["studio"] += 1
         else:
-            new_id = str(stash.create("studio", create_input))
-            log.info(f"{label}: created studio {create_input['name']!r} (id {new_id})")
+            new_id, created = create_or_link(stash, "studio", create_input, label, log)
+            if created:
+                log.info(f"{label}: created studio {create_input['name']!r} (id {new_id})")
+                state.created["studio"] += 1
             state.created_ids[key] = new_id
-        state.created["studio"] += 1
     return state.created_ids[key]
 
 

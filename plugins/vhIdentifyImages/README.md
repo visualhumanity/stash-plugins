@@ -86,7 +86,8 @@ A field the scraper returns nothing for (missing or blank) is never touched, und
 - A created performer gets the scraped name, disambiguation (when the scraper gives one) and URLs. A created tag gets the scraped name.
 - Each missing name is created once per run and reused for every later image that has it. Names compare ignoring ASCII case (A to Z only), as Stash matches them, so `Example` and `EXAMPLE` are one name but `É` and `é` differ. Two performers with the same name and different disambiguations are different performers.
 - A scraped performer or tag without a name is never created.
-- If a create fails, the image is counted as failed and the run carries on.
+- If a create fails because the name already exists, the existing performer or tag is linked instead and logged as "linked existing ... after a name clash". This happens when something else created it after the scrape, most often Scrape on scan: Stash scans with several workers in parallel, so two new images from one post can both be scraped before either creates the uploader. The existing one is used only when exactly one has that name (ignoring ASCII case, and with the same disambiguation for performers). It is not counted as created.
+- If a create fails for any other reason, or the name clash cannot be resolved, the image is counted as failed and the run carries on.
 - The end summary adds `performers created` and `tags created`. With Dry run on, these count what would be created, and each would-be create is logged.
 - **Skip single-name performers** follows Identify's rule: with it on, a performer whose name has no space and who has no disambiguation is not created (the rest of the image is still updated). Reddit uploader names such as `u_example_user` have no space, so keep this off when scraping Reddit images, or no uploader is ever created.
 
@@ -100,7 +101,7 @@ The studio follows the single-value rule: `merge` sets it only when the image ha
   - The new studio gets the scraped name, URLs, details and aliases, whichever the scraper returned.
   - If the scraped parent is missing too, the parent is created first, and the new studio is created under it.
   - If the scraped parent matched an existing studio, **that parent gets the scraped parent's fields written to it**: name, URLs (replacing its list), details and aliases, plus its own parent when the scrape names a matched one. Only fields the scraper returned are sent, so nothing is cleared. The name is always sent, so this can rename the parent, for example to a different letter case (`reddit` becomes `Reddit`). This is what Identify does. Each parent is written at most once per run.
-- Each missing studio (and parent) is created once per run and reused. Names compare ignoring ASCII case, as for performers and tags.
+- Each missing studio (and parent) is created once per run and reused. Names compare ignoring ASCII case, as for performers and tags. A studio or parent whose create clashes with an existing name is linked the same way as performers and tags.
 - The end summary adds `studios created`, counting parents too. With Dry run on, it counts what would be created, and the log shows each would-be create and parent update.
 
 ### Organized
