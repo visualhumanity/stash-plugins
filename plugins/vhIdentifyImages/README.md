@@ -67,6 +67,8 @@ These are Identify's rules for single-value fields:
 
 A field the scraper returns nothing for (missing or blank) is never touched, under any option. The image is updated only when at least one field changes.
 
+The image is read after the scrape, and read again after any performers, tags or studios are created, so "only when empty" and "nothing changed" are decided on its current values, not on what it held before a slow scrape.
+
 ### List fields: URLs, performers and tags
 
 | Option | Effect |
@@ -76,6 +78,7 @@ A field the scraper returns nothing for (missing or blank) is never touched, und
 | `overwrite` | the image's list is replaced by the scraped one |
 
 - An empty scraped list changes nothing, under any option.
+- Under `merge`, only the new items are sent, as an addition, so anything added to the image while the plugin works on it (by hand or by another plugin) is kept. `overwrite` replaces the whole list.
 - URLs under `overwrite`: as in Identify, the list is replaced only when the scrape has a URL the image does not have yet.
 - Performers and tags that Stash matched to an existing performer or tag (the same matching the image Scrape menu shows) are linked. Existing performers and tags are never edited.
 - Unmatched items are created and linked when the matching create option is on (see below). Otherwise they are dropped and logged as "not linked, no existing match".

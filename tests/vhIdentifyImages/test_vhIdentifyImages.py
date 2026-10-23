@@ -369,7 +369,7 @@ class RelationshipTests(unittest.TestCase):
             with self.subTest(field=field):
                 stub = self.run_field(field, "merge", [], [make(None, "u_example_user"), make("7", "Example")])
                 self.assertEqual(self.update_ids(stub, field), [["7"]])
-                self.assertEqual([m for m in stub.mutations() if "imageUpdate" not in m["query"]], [])
+                self.assertEqual([m for m in stub.mutations() if "bulkImageUpdate" not in m["query"]], [])
 
     def test_only_unmatched_items_under_merge_changes_nothing(self):
         for field, make in self.each_field():
@@ -709,7 +709,7 @@ class StudioTests(unittest.TestCase):
         stub, _ = self.one({"fieldStudio": "ignore", "createMissingStudios": True}, studio("r_ExampleSub", stored_id="4"))
         self.assertEqual(self.studio_updates(stub), [])
         stub, _ = self.one({"fieldStudio": "ignore", "createMissingStudios": True}, studio("r_ExampleSub"))
-        self.assertEqual(stub.mutations()[0]["variables"]["input"].keys() - {"id", "title"}, set())
+        self.assertEqual(stub.mutations()[0]["variables"]["input"].keys() - {"ids", "title"}, set())
 
     def test_no_scraped_studio_changes_nothing(self):
         for scraped in (None, studio(""), studio("  ")):
@@ -1032,7 +1032,7 @@ class ScanHookTests(unittest.TestCase):
     def test_unscoped_hook_uses_the_minimum_queries(self):
         stub, _ = self.run_hook({"scrapeOnScan": True}, [image(1, SUB + "1.jpg")], scrapes={"1": [{"title": "Example Image"}]})
         self.assertEqual(
-            stub.operations(), ["PluginConfiguration", "ListImageScrapers", "FindImage", "ScrapeSingleImage", "ImageUpdate"]
+            stub.operations(), ["PluginConfiguration", "ListImageScrapers", "ScrapeSingleImage", "FindImage", "ImageUpdate"]
         )
 
     def test_update_hook_events_do_nothing(self):
@@ -1143,6 +1143,84 @@ class CreateRaceTests(unittest.TestCase):
         self.assertEqual(stub.updates(), [{"id": "1", "performer_ids": ["50"]}])
 
 
+class ConcurrentEditTests(unittest.TestCase):
+    """Edits made by someone else while the plugin works on an image must survive."""
+
+    def test_merge_adds_and_overwrite_sets(self):
+        img = image(1, SUB + "1.jpg", urls=[URL_A], performers=[linked("5", "Existing")], tags=[linked("3", "Old Tag")])
+        scrape = {"urls": [URL_A, URL_B], "performers": [performer("7", "Example")], "tags": [tag("9", "Example Tag")]}
+        settings = {"fieldTags": "overwrite"}
+        with FakeStash([img], settings=settings, scrapes={"1": [scrape]}) as stub:
+            run_plugin(stub)
+        self.assertEqual(
+            stub.update_inputs(),
+            [
+                {
+                    "ids": ["1"],
+                    "urls": {"values": [URL_B], "mode": "ADD"},
+                    "performer_ids": {"ids": ["7"], "mode": "ADD"},
+                    "tag_ids": {"ids": ["9"], "mode": "SET"},
+                }
+            ],
+        )
+
+    def test_overwrite_urls_and_performers_use_set(self):
+        img = image(1, SUB + "1.jpg", urls=[URL_A], performers=[linked("5", "Existing")])
+        scrape = {"urls": [URL_B], "performers": [performer("7", "Example")]}
+        with FakeStash([img], settings={"fieldUrls": "overwrite", "fieldPerformers": "overwrite"}, scrapes={"1": [scrape]}) as stub:
+            run_plugin(stub)
+        self.assertEqual(
+            stub.update_inputs(),
+            [{"ids": ["1"], "urls": {"values": [URL_B], "mode": "SET"}, "performer_ids": {"ids": ["7"], "mode": "SET"}}],
+        )
+
+    def test_edit_during_the_scrape_is_kept(self):
+        def edit(stub):
+            img = stub.images["1"]
+            img["title"] = "Edited Title"
+            img["performers"] = [{"id": "8", "name": "Added By Hand"}]
+            img["urls"] = [URL_C]
+
+        scrape = {"title": "Example Image", "performers": [performer("7", "Example")], "urls": [URL_A]}
+        with FakeStash(
+            [image(1, SUB + "1.jpg")], settings={}, scrapes={"1": [scrape]}, before={"ScrapeSingleImage": edit}
+        ) as stub:
+            run_plugin(stub)
+        self.assertEqual(stub.updates(), [{"id": "1", "urls": [URL_C, URL_A], "performer_ids": ["8", "7"]}])
+        self.assertEqual(stub.images["1"]["title"], "Edited Title")
+
+    def test_edit_during_a_create_is_kept(self):
+        def edit(stub):
+            img = stub.images["1"]
+            img["title"] = "Edited Title"
+            img["tags"] = [{"id": "4", "name": "Added By Hand"}]
+
+        scrape = {"title": "Example Image", "performers": [new_performer("u_example_user")], "tags": [tag("9", "Example Tag")]}
+        with FakeStash(
+            [image(1, SUB + "1.jpg")],
+            settings={"createMissingPerformers": True},
+            scrapes={"1": [scrape]},
+            before={"PerformerCreate": edit},
+        ) as stub:
+            run_plugin(stub)
+        self.assertEqual(stub.updates(), [{"id": "1", "performer_ids": ["101"], "tag_ids": ["4", "9"]}])
+        self.assertEqual(stub.images["1"]["title"], "Edited Title")
+
+    def test_edit_that_makes_the_update_unneeded_sends_nothing(self):
+        def edit(stub):
+            stub.images["1"]["title"] = "Edited Title"
+
+        with FakeStash(
+            [image(1, SUB + "1.jpg")],
+            settings={},
+            scrapes={"1": [{"title": "Example Image"}]},
+            before={"ScrapeSingleImage": edit},
+        ) as stub:
+            log = run_plugin(stub)
+        self.assertEqual(stub.mutations(), [])
+        self.assertIn("unchanged 1", joined(log))
+
+
 class DryRunTests(unittest.TestCase):
     def test_dry_run_sends_no_update_and_logs_old_and_new_values(self):
         img = image(1, SUB + "a.jpg", title="Old Title")
@@ -1150,7 +1228,7 @@ class DryRunTests(unittest.TestCase):
         settings = {"dryRun": True, "fieldTitle": "overwrite"}
         with FakeStash([img], settings=settings, scrapes={"1": [scrape]}) as stub:
             log = run_plugin(stub)
-        self.assertEqual(stub.calls("imageUpdate"), [])
+        self.assertEqual(stub.calls("bulkImageUpdate"), [])
         text = joined(log)
         self.assertIn("dry run", text.lower())
         self.assertIn("title: 'Old Title' -> 'Example Image'", text)
@@ -1162,7 +1240,7 @@ class DryRunTests(unittest.TestCase):
         scrapes = {"1": [{"title": "Example Image"}], "2": [{"title": "Example Image"}]}
         with FakeStash(images, settings={"dryRun": True}, scrapes=scrapes) as stub:
             log = run_plugin(stub)
-        self.assertEqual(stub.calls("imageUpdate"), [])
+        self.assertEqual(stub.calls("bulkImageUpdate"), [])
         self.assertIn("processed 2, updated 1, unchanged 1, no result 0, failed 0", joined(log))
 
 
@@ -1192,7 +1270,7 @@ class InvalidSettingTests(unittest.TestCase):
             log = run_plugin(stub)
         self.assertIn(setting_name, joined(log, "e"))
         self.assertEqual(stub.calls("scrapeSingleImage"), [])
-        self.assertEqual(stub.calls("imageUpdate"), [])
+        self.assertEqual(stub.calls("bulkImageUpdate"), [])
         self.assertEqual(stub.calls("findImages"), [])
 
     def test_unknown_field_option(self):
@@ -1234,7 +1312,8 @@ class FailureAndSummaryTests(unittest.TestCase):
         with FakeStash(images, settings={}, scrapes=scrapes, scrape_errors={"2"}, update_errors={"3"}) as stub:
             log = run_plugin(stub)
         self.assertEqual(stub.scraped_ids(), ["1", "2", "3", "4", "5", "6"])
-        self.assertEqual([u["id"] for u in stub.updates()], ["1", "3", "6"])
+        self.assertEqual([u["ids"][0] for u in stub.update_inputs()], ["1", "3", "6"])
+        self.assertEqual([u["id"] for u in stub.updates()], ["1", "6"])
         errors = joined(log, "e")
         self.assertIn("scraper failed for this image", errors)
         self.assertIn("update rejected", errors)
@@ -1246,7 +1325,7 @@ class FailureAndSummaryTests(unittest.TestCase):
         scrapes = {"1": [{"title": None, "date": "", "urls": []}]}
         with FakeStash([image(1, SUB + "a.jpg")], settings={}, scrapes=scrapes) as stub:
             log = run_plugin(stub)
-        self.assertEqual(stub.calls("imageUpdate"), [])
+        self.assertEqual(stub.calls("bulkImageUpdate"), [])
         self.assertIn("processed 1, updated 0, unchanged 0, no result 1, failed 0", joined(log))
 
     def test_progress_is_reported_and_reaches_one(self):

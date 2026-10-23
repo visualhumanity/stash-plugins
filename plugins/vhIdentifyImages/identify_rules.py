@@ -259,11 +259,23 @@ def add_organized(image, changes):
         changes["organized"] = (False, True)
 
 
-def build_update_input(image_id, changes):
-    update = {"id": image_id}
-    for field, (_old, new) in changes.items():
+def build_update_input(image_id, changes, strategies):
+    """BulkImageUpdateInput for one image.
+
+    List fields under merge send only the added values with mode ADD, so
+    values someone else added in the meantime are kept; overwrite sends the
+    whole list with mode SET.
+    """
+    update = {"ids": [image_id]}
+    for field, (old, new) in changes.items():
+        merge = strategies.get(field) == "merge"
         if field in RELATIONSHIP_FIELDS:
-            update[RELATIONSHIP_FIELDS[field]] = [entry["id"] for entry in new]
+            old_ids = [entry["id"] for entry in old]
+            ids = [entry["id"] for entry in new if not (merge and entry["id"] in old_ids)]
+            update[RELATIONSHIP_FIELDS[field]] = {"ids": ids, "mode": "ADD" if merge else "SET"}
+        elif field == "urls":
+            values = [url for url in new if not (merge and url in old)]
+            update["urls"] = {"values": values, "mode": "ADD" if merge else "SET"}
         elif field == "studio":
             update["studio_id"] = new["id"]
         else:

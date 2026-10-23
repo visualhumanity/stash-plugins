@@ -87,6 +87,8 @@ class RunState:
         self.created_ids = {}
         # IDs of existing parent studios already written to in this run
         self.updated_parents = set()
+        # creates and studio updates sent so far
+        self.writes = 0
 
 
 SINGULAR = {"performers": "performer", "tags": "tag", "studio": "studio"}
@@ -109,7 +111,8 @@ def create_or_link(stash, field, create_input, label, log):
     Stash matches names). Otherwise the create error is raised.
     """
     try:
-        return str(stash.create(field, create_input)), True
+        new_id = str(stash.create(field, create_input))
+        return new_id, True
     except RuntimeError as exc:
         if "already exists" not in str(exc):
             raise
@@ -132,6 +135,7 @@ def resolve_creates(stash, settings, changes, state, label, log):
                 state.created[field] += 1
             else:
                 new_id, created = create_or_link(stash, field, entry["create"], label, log)
+                state.writes += 1
                 if created:
                     log.info(f"{label}: created {SINGULAR[field]} {entry['name']!r} (id {new_id})")
                     state.created[field] += 1
@@ -166,6 +170,7 @@ def _create_studio(stash, settings, item, parent_id, state, label, log):
             state.created["studio"] += 1
         else:
             new_id, created = create_or_link(stash, "studio", create_input, label, log)
+            state.writes += 1
             if created:
                 log.info(f"{label}: created studio {create_input['name']!r} (id {new_id})")
                 state.created["studio"] += 1
@@ -186,6 +191,7 @@ def _apply_parent(stash, settings, parent, state, label, log):
             log.info(f"{label}: would update studio {update['id']} ({update['name']!r}) with {fields!r}")
         else:
             stash.update_studio(update)
+            state.writes += 1
             log.info(f"{label}: updated studio {update['id']} ({update['name']!r}) with {fields!r}")
         state.updated_parents.add(update["id"])
     return update["id"]
@@ -210,14 +216,9 @@ def image_label(image_id, path):
     return f"image {image_id} ({path or 'no file'})"
 
 
-def process_image(stash, settings, image_id, label, state, log):
-    """Scrape and apply one image. Returns 'updated', 'unchanged' or 'no result'."""
+def plan_image(stash, settings, image_id, scraped, state, label, log):
+    """Read the image as it is now, plan its changes and make any creates they need."""
     image = stash.find_image(image_id)
-    label = label or image_label(image_id, image_path(image))
-    scraped = scrape(stash, settings.sources, image_id)
-    if scraped is None:
-        log.info(f"{label}: no scrape result")
-        return "no result"
     create_options = {
         "performers": settings.create_missing_performers,
         "tags": settings.create_missing_tags,
@@ -225,10 +226,30 @@ def process_image(stash, settings, image_id, label, state, log):
         "skip_single_name": settings.skip_single_name_performers,
     }
     changes, report = plan_changes(image, scraped, settings.field_strategies, create_options)
-    if report:
-        log.info(f"{label}: {describe_report(report)}")
+    label = label or image_label(image_id, image_path(image))
     resolve_studio(stash, settings, changes, state, label, log)
     resolve_creates(stash, settings, changes, state, label, log)
+    return image, changes, report, label
+
+
+def process_image(stash, settings, image_id, label, state, log):
+    """Scrape and apply one image. Returns 'updated', 'unchanged' or 'no result'.
+
+    The image is read after the scrape, and read again after any creates,
+    so the plan uses its current values and edits made in the meantime are
+    not overwritten.
+    """
+    scraped = scrape(stash, settings.sources, image_id)
+    if scraped is None:
+        log.info(f"{label or f'image {image_id}'}: no scrape result")
+        return "no result"
+    writes = state.writes
+    image, changes, report, label = plan_image(stash, settings, image_id, scraped, state, label, log)
+    if report:
+        log.info(f"{label}: {describe_report(report)}")
+    if state.writes != writes:
+        # creates take time; plan again from a fresh read (created IDs come from the run cache)
+        image, changes, _report, label = plan_image(stash, settings, image_id, scraped, state, label, log)
     if settings.set_organized:
         add_organized(image, changes)
     if not changes:
@@ -236,7 +257,7 @@ def process_image(stash, settings, image_id, label, state, log):
     if settings.dry_run:
         log.info(f"{label}: would change {describe_changes(changes)}")
         return "updated"
-    stash.update_image(build_update_input(image_id, changes))
+    stash.update_image(build_update_input(image_id, changes, settings.field_strategies))
     log.info(f"{label}: changed {describe_changes(changes)}")
     return "updated"
 

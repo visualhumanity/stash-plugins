@@ -5,6 +5,7 @@ queries the plugin sends, and records every request so tests can check which
 calls went out and with what input.
 """
 
+import copy
 import json
 import os
 import re
@@ -136,6 +137,7 @@ def image(image_id, path, **fields):
         "urls": [],
         "performers": [],
         "tags": [],
+        "studio": None,
         "visual_files": [{"path": path}] if path is not None else [],
     }
     record.update(fields)
@@ -153,8 +155,15 @@ class FakeStash:
         create_errors=(),
         scrapers=DEFAULT_SCRAPERS,
         entities=None,
+        before=None,
     ):
-        self.images = {img["id"]: img for img in images}
+        # copies, because updates are applied to the stored images
+        self.images = {img["id"]: copy.deepcopy(img) for img in images}
+        # operation name -> function(stub) run once just before that operation is answered,
+        # to simulate an edit made by someone else while the plugin works
+        self.before = dict(before or {})
+        # effective result of every image update: {"id", <input key>: resulting value}
+        self.applied = []
         self.settings = settings
         # image id -> list of ScrapedImage dicts (missing means an empty list)
         self.scrapes = scrapes or {}
@@ -213,6 +222,9 @@ class FakeStash:
         return response
 
     def answer(self, query, variables):
+        operation = query.split("(")[0].split("{")[0].split()[-1]
+        if operation in self.before:
+            self.before.pop(operation)(self)
         if "configuration" in query:
             plugins = {} if self.settings is None else {PLUGIN_ID: self.settings}
             return {"data": {"configuration": {"plugins": plugins}}}
@@ -235,12 +247,46 @@ class FakeStash:
                 return self.create_entity(mutation, kind, variables["input"])
             if finder in query:
                 return {"data": {finder: {key: self.find_entities(kind, variables)}}}
-        if "imageUpdate" in query:
-            update = variables["input"]
-            if update["id"] in self.update_errors:
-                return {"errors": [{"message": "update rejected"}]}
-            return {"data": {"imageUpdate": {"id": update["id"]}}}
+        if "bulkImageUpdate" in query:
+            return self.bulk_image_update(variables["input"])
         return {"errors": [{"message": "stub does not know this query"}]}
+
+    def bulk_image_update(self, update):
+        """Apply a BulkImageUpdateInput as Stash does: SET replaces a list, ADD appends missing values."""
+        assert len(update["ids"]) == 1, "the plugin sends one image per update"
+        image_id = update["ids"][0]
+        if image_id in self.update_errors:
+            return {"errors": [{"message": "update rejected"}]}
+        img = self.images[image_id]
+        applied = {"id": image_id}
+        for key, value in update.items():
+            if key == "ids":
+                continue
+            if key in ("urls", "performer_ids", "tag_ids"):
+                assert value["mode"] in ("SET", "ADD"), value
+                values = value["values"] if key == "urls" else value["ids"]
+                if key == "urls":
+                    current = img["urls"]
+                else:
+                    current = [e["id"] for e in img[key.replace("_ids", "s")]]
+                result = list(values) if value["mode"] == "SET" else current + [v for v in values if v not in current]
+                if key == "urls":
+                    img["urls"] = result
+                else:
+                    img[key.replace("_ids", "s")] = [{"id": i, "name": self.entity_name(key, i)} for i in result]
+                applied[key] = result
+            elif key == "studio_id":
+                img["studio"] = {"id": value, "name": None} if value else None
+                applied[key] = value
+            else:
+                img[key] = value
+                applied[key] = value
+        self.applied.append(applied)
+        return {"data": {"bulkImageUpdate": [{"id": image_id}]}}
+
+    def entity_name(self, key, entity_id):
+        kind = "performers" if key == "performer_ids" else "tags"
+        return next((e["name"] for e in self.entities[kind] if e["id"] == entity_id), None)
 
     def create_entity(self, mutation, kind, create_input):
         name = create_input["name"]
@@ -309,7 +355,11 @@ class FakeStash:
         return [b["variables"]["input"] for b in self.calls(mutation)]
 
     def updates(self):
-        return [b["variables"]["input"] for b in self.calls("imageUpdate")]
+        """The effective result of each image update (resulting lists for ADD and SET)."""
+        return list(self.applied)
+
+    def update_inputs(self):
+        return [b["variables"]["input"] for b in self.calls("bulkImageUpdate")]
 
 
 def hook_args(image_id, hook_type="Image.Create.Post"):

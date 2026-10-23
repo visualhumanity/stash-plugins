@@ -98,9 +98,11 @@ query FindStudiosByName($studio_filter: StudioFilterType, $filter: FindFilterTyp
     ),
 }
 
+# bulkImageUpdate, one image at a time, because only it can ADD to lists
+# (imageUpdate always replaces them). It fires Image.Update.Post like imageUpdate.
 IMAGE_UPDATE = """
-mutation ImageUpdate($input: ImageUpdateInput!) {
-  imageUpdate(input: $input) { id }
+mutation ImageUpdate($input: BulkImageUpdateInput!) {
+  bulkImageUpdate(input: $input) { id }
 }"""
 
 
@@ -212,4 +214,4 @@ class StashClient:
         return self.call(STUDIO_UPDATE, {"input": update_input})["studioUpdate"]
 
     def update_image(self, update_input):
-        return self.call(IMAGE_UPDATE, {"input": update_input})["imageUpdate"]
+        return self.call(IMAGE_UPDATE, {"input": update_input})["bulkImageUpdate"]
