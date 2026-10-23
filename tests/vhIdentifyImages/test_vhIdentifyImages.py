@@ -115,6 +115,13 @@ class FolderPrefixTests(unittest.TestCase):
         self.assertEqual(len(set(stub.scraped_ids())), 1205)
         self.assertIn("processed 1205", joined(log))
 
+    def test_listing_does_not_ask_stash_for_a_count(self):
+        # count makes Stash run an extra filtered COUNT query for every page
+        with FakeStash([image(1, SUB + "a.jpg")], settings={}) as stub:
+            run_plugin(stub)
+        for body in stub.calls("findImages"):
+            self.assertNotRegex(body["query"], r"\bcount\b")
+
 
 class SingleValueFieldTests(unittest.TestCase):
     def run_field(self, field, option, existing, scraped):

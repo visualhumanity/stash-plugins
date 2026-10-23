@@ -14,7 +14,6 @@ query PluginConfiguration($include: [ID!]) {
 FIND_IMAGE_IDS = """
 query FindImageIds($image_filter: ImageFilterType, $filter: FindFilterType) {
   findImages(image_filter: $image_filter, filter: $filter) {
-    count
     images { id visual_files { ... on ImageFile { path } ... on VideoFile { path } } }
   }
 }"""
