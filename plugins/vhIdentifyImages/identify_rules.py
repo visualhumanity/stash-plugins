@@ -128,6 +128,9 @@ def _relationship_changes(image, scraped, field, strategy, options, changes, rep
         key = creation_key(field, create_input)
         if key not in [e.get("key") for e in new]:
             new.append({"id": None, "name": create_input["name"], "key": key, "create": create_input})
+    if not new:
+        # As in Identify, overwrite with nothing matched or created keeps the existing links
+        return
     if any(e["id"] is None for e in new) or sorted(e["id"] for e in old) != sorted(e["id"] for e in new):
         changes[field] = (old, new)
 

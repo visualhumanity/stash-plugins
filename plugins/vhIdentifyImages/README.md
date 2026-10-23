@@ -68,7 +68,7 @@ A field the scraper returns nothing for (missing or blank) is never touched, und
 - URLs under `overwrite`: as in Identify, the list is replaced only when the scrape has a URL the image does not have yet.
 - Performers and tags that Stash matched to an existing performer or tag (the same matching the image Scrape menu shows) are linked. Existing performers and tags are never edited.
 - Unmatched items are created and linked when the matching create option is on (see below). Otherwise they are dropped and logged as "not linked, no existing match".
-- Performers and tags under `overwrite`: as in Identify, the links are replaced by the matched and created items only. If the scrape returns performers but none of them match and none are created, the image's performers are cleared. Same for tags.
+- Performers and tags under `overwrite`: as in Identify, the links are replaced by the matched and created items only. If none of the scraped performers match and none are created (or all are skipped), the image's performers are kept as they are. Same for tags.
 
 ### Creating missing performers and tags
 
