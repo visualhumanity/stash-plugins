@@ -17,8 +17,8 @@ query ListImageScrapers($types: [ScrapeContentType!]!) {
 }"""
 
 FIND_IMAGE_IDS = """
-query FindImageIds($image_filter: ImageFilterType, $filter: FindFilterType, $ids: [ID!]) {
-  findImages(image_filter: $image_filter, filter: $filter, ids: $ids) {
+query FindImageIds($image_filter: ImageFilterType, $filter: FindFilterType) {
+  findImages(image_filter: $image_filter, filter: $filter) {
     images { id visual_files { ... on ImageFile { path } ... on VideoFile { path } } }
   }
 }"""
@@ -120,14 +120,18 @@ class StashClient:
         scrapers = self.call(LIST_IMAGE_SCRAPERS, {"types": ["IMAGE"]})["listScrapers"] or []
         return {s["id"]: (s.get("image") or {}).get("supported_scrapes") or [] for s in scrapers}
 
-    def find_images(self, prefixes, limit, skip_organized=False, ids=None):
+    def find_images(self, prefixes, limit, skip_organized=False, image_id=None):
         """List (id, path) for images under the prefixes, sorted by path, up to limit (0 = all).
 
         With skip_organized, organized images are filtered out by Stash, so the
-        limit counts only images that will be processed. ids limits the search
-        to those images, so one image is checked with the same filter as a run.
+        limit counts only images that will be processed. image_id limits the
+        search to that one image through the same filter, so the scan hook
+        checks it exactly as a run would. (findImages' ids argument cannot be
+        used: Stash ignores every filter when it is given.)
         """
         image_filter = {}
+        if image_id is not None:
+            image_filter["id"] = {"value": int(image_id), "modifier": "EQUALS"}
         if skip_organized:
             image_filter["organized"] = False
         if prefixes:
@@ -135,10 +139,7 @@ class StashClient:
         found, page = [], 1
         while True:
             find_filter = {"page": page, "per_page": PAGE_SIZE, "sort": "path", "direction": "ASC"}
-            variables = {"image_filter": image_filter, "filter": find_filter}
-            if ids is not None:
-                variables["ids"] = [str(i) for i in ids]
-            data = self.call(FIND_IMAGE_IDS, variables)
+            data = self.call(FIND_IMAGE_IDS, {"image_filter": image_filter, "filter": find_filter})
             images = data["findImages"]["images"]
             for image in images:
                 found.append((image["id"], image_path(image)))

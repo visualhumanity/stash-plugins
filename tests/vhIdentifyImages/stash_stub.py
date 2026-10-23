@@ -98,6 +98,28 @@ def image_scraper(scraper_id, supported=("FRAGMENT",)):
 DEFAULT_SCRAPERS = (image_scraper("GalleryDlReddit"), image_scraper("ExampleScraper"))
 
 
+_ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+
+
+def _fold(text):
+    return (text or "").translate(_ASCII_LOWER)
+
+
+def _like(value, pattern):
+    """SQLite LIKE, which Stash uses for EQUALS: % and _ are wildcards, ASCII case is ignored."""
+    regex = "".join(".*" if c == "%" else "." if c == "_" else re.escape(c) for c in _fold(pattern))
+    return re.fullmatch(regex, _fold(value), re.DOTALL) is not None
+
+
+# mutation -> (entity kind, find query field, result list key)
+ENTITY_MUTATIONS = {
+    "performerCreate": ("performers", "findPerformers", "performers"),
+    "tagCreate": ("tags", "findTags", "tags"),
+    "studioCreate": ("studios", "findStudios", "studios"),
+}
+SINGULAR = {"performers": "performer", "tags": "tag", "studios": "studio"}
+
+
 def _path(img):
     files = img.get("visual_files") or []
     return files[0]["path"] if files else None
@@ -130,6 +152,7 @@ class FakeStash:
         update_errors=(),
         create_errors=(),
         scrapers=DEFAULT_SCRAPERS,
+        entities=None,
     ):
         self.images = {img["id"]: img for img in images}
         self.settings = settings
@@ -140,6 +163,10 @@ class FakeStash:
         # names whose performerCreate / tagCreate / studioCreate is rejected
         self.create_errors = set(create_errors)
         self.next_id = 100
+        # performers, tags and studios that exist in Stash: kind -> list of {"id", "name", ...}.
+        # Creating a name that exists fails as in Stash; the plugin's scrapes never
+        # match these, which is how a create racing a parallel scan looks.
+        self.entities = {kind: list((entities or {}).get(kind, [])) for kind in ("performers", "tags", "studios")}
         # what listScrapers(types: [IMAGE]) returns
         self.scrapers = list(scrapers)
         self.requests = []
@@ -203,13 +230,11 @@ class FakeStash:
             return {"data": {"scrapeSingleImage": self.scrapes.get(image_id, [])}}
         if "studioUpdate" in query:
             return {"data": {"studioUpdate": {"id": variables["input"]["id"]}}}
-        for mutation in ("performerCreate", "tagCreate", "studioCreate"):
+        for mutation, (kind, finder, key) in ENTITY_MUTATIONS.items():
             if mutation in query:
-                name = variables["input"]["name"]
-                if name in self.create_errors:
-                    return {"errors": [{"message": f"{mutation} rejected"}]}
-                self.next_id += 1
-                return {"data": {mutation: {"id": str(self.next_id)}}}
+                return self.create_entity(mutation, kind, variables["input"])
+            if finder in query:
+                return {"data": {finder: {key: self.find_entities(kind, variables)}}}
         if "imageUpdate" in query:
             update = variables["input"]
             if update["id"] in self.update_errors:
@@ -217,13 +242,38 @@ class FakeStash:
             return {"data": {"imageUpdate": {"id": update["id"]}}}
         return {"errors": [{"message": "stub does not know this query"}]}
 
+    def create_entity(self, mutation, kind, create_input):
+        name = create_input["name"]
+        if name in self.create_errors:
+            return {"errors": [{"message": f"{mutation} rejected"}]}
+        disambiguation = create_input.get("disambiguation") or ""
+        for entity in self.entities[kind]:
+            same_disambiguation = kind != "performers" or _fold(entity.get("disambiguation")) == _fold(disambiguation)
+            if _fold(entity["name"]) == _fold(name) and same_disambiguation:
+                return {"errors": [{"message": f"{SINGULAR[kind]} with name '{name}' already exists"}]}
+        self.next_id += 1
+        self.entities[kind].append({"id": str(self.next_id), "name": name, "disambiguation": disambiguation or None})
+        return {"data": {mutation: {"id": str(self.next_id)}}}
+
+    def find_entities(self, kind, variables):
+        filters = next((v for k, v in variables.items() if k.endswith("_filter")), None) or {}
+        matches = self.entities[kind]
+        for field, criterion in filters.items():
+            assert criterion["modifier"] == "EQUALS", criterion
+            matches = [e for e in matches if _like(e.get(field), criterion["value"])]
+        return matches
+
     def find_images(self, variables):
         image_filter = variables.get("image_filter") or {}
         find_filter = variables.get("filter") or {}
         matches = sorted(self.images.values(), key=lambda img: _path(img) or "")
-        if variables.get("ids") is not None:
+        if variables.get("ids"):
+            # as in Stash: with ids, image_filter and filter are ignored
             ids = {str(i) for i in variables["ids"]}
-            matches = [img for img in matches if img["id"] in ids]
+            return {"count": len(ids), "images": [img for img in matches if img["id"] in ids]}
+        if "id" in image_filter:
+            assert image_filter["id"]["modifier"] == "EQUALS", image_filter
+            matches = [img for img in matches if img["id"] == str(image_filter["id"]["value"])]
         path = image_filter.get("path")
         if path:
             assert path["modifier"] == "MATCHES_REGEX", path

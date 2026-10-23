@@ -248,7 +248,7 @@ def run_task(stash, settings, log):
 def run_hook(stash, settings, image_id, log):
     """Scan hook: run one new image through the same filters and steps as the task."""
     if settings.folder_prefixes or settings.skip_organized:
-        eligible = stash.find_images(settings.folder_prefixes, 0, settings.skip_organized, ids=[image_id])
+        eligible = stash.find_images(settings.folder_prefixes, 0, settings.skip_organized, image_id=image_id)
         if not eligible:
             log.debug(f"image {image_id}: outside the folder prefixes or organized; skipped")
             return
