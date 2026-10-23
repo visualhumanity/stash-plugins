@@ -73,15 +73,23 @@ def _text(value):
     return value.strip() if isinstance(value, str) else ""
 
 
+_ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+
+
+def fold_case(name):
+    """Fold A-Z only, as Stash's name matching (SQLite NOCASE) does."""
+    return name.translate(_ASCII_LOWER)
+
+
 def creation_key(field, create_input):
     """Key for reusing a created entity within a run.
 
-    Names compare case-insensitively, as Stash matches them; a performer's
+    Names compare ignoring ASCII case, as Stash matches them; a performer's
     disambiguation is part of its identity.
     """
-    key = (field, create_input["name"].lower())
+    key = (field, fold_case(create_input["name"]))
     if field == "performers":
-        key += (create_input.get("disambiguation", "").lower(),)
+        key += (fold_case(create_input.get("disambiguation", "")),)
     return key
 
 
@@ -101,9 +109,9 @@ def _create_input(field, item):
     return create_input
 
 
-def _is_single_name(create_input):
-    # Identify's rule: no space in the name and no disambiguation
-    return " " not in create_input["name"] and not create_input.get("disambiguation")
+def _is_single_name(item):
+    # Identify's rule, on the raw scraped values: no space in the name and no disambiguation
+    return " " not in (item.get("name") or "") and not item.get("disambiguation")
 
 
 def _relationship_changes(image, scraped, field, strategy, options, changes, report):
@@ -122,7 +130,7 @@ def _relationship_changes(image, scraped, field, strategy, options, changes, rep
         if create_input is None:
             report.setdefault("unmatched", {}).setdefault(field, []).append(item.get("name"))
             continue
-        if field == "performers" and options.get("skip_single_name") and _is_single_name(create_input):
+        if field == "performers" and options.get("skip_single_name") and _is_single_name(item):
             report.setdefault("skipped_single_name", []).append(create_input["name"])
             continue
         key = creation_key(field, create_input)
@@ -136,8 +144,8 @@ def _relationship_changes(image, scraped, field, strategy, options, changes, rep
 
 
 def studio_key(name):
-    """Key for reusing a created studio within a run (case-insensitive, as Stash matches names)."""
-    return ("studio", name.strip().lower())
+    """Key for reusing a created studio within a run (ignoring ASCII case, as Stash matches names)."""
+    return ("studio", fold_case(name.strip()))
 
 
 def studio_name(item):

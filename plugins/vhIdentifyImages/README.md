@@ -75,7 +75,7 @@ A field the scraper returns nothing for (missing or blank) is never touched, und
 ### Creating missing performers and tags
 
 - A created performer gets the scraped name, disambiguation (when the scraper gives one) and URLs. A created tag gets the scraped name.
-- Each missing name is created once per run and reused for every later image that has it. Names compare without regard to case, as Stash matches them. Two performers with the same name and different disambiguations are different performers.
+- Each missing name is created once per run and reused for every later image that has it. Names compare ignoring ASCII case (A to Z only), as Stash matches them, so `Example` and `EXAMPLE` are one name but `É` and `é` differ. Two performers with the same name and different disambiguations are different performers.
 - A scraped performer or tag without a name is never created.
 - If a create fails, the image is counted as failed and the run carries on.
 - The end summary adds `performers created` and `tags created`. With Dry run on, these count what would be created, and each would-be create is logged.
@@ -91,7 +91,7 @@ The studio follows the single-value rule: `merge` sets it only when the image ha
   - The new studio gets the scraped name, URLs, details and aliases, whichever the scraper returned.
   - If the scraped parent is missing too, the parent is created first, and the new studio is created under it.
   - If the scraped parent matched an existing studio, **that parent gets the scraped parent's fields written to it**: name, URLs (replacing its list), details and aliases, plus its own parent when the scrape names a matched one. Only fields the scraper returned are sent, so nothing is cleared. This is what Identify does. Each parent is written at most once per run.
-- Each missing studio (and parent) is created once per run and reused. Names compare without regard to case.
+- Each missing studio (and parent) is created once per run and reused. Names compare ignoring ASCII case, as for performers and tags.
 - The end summary adds `studios created`, counting parents too. With Dry run on, it counts what would be created, and the log shows each would-be create and parent update.
 
 ### Organized

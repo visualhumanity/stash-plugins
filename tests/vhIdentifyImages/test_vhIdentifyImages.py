@@ -598,6 +598,53 @@ class CreateMissingTests(unittest.TestCase):
         self.assertIn("updated 2", text)
         self.assertIn("performers created 1, tags created 1", text)
 
+    def test_reuse_folds_only_ascii_case_like_stash(self):
+        # Stash matches names with SQLite NOCASE, which folds A-Z only
+        scrapes = {
+            "1": [{"performers": [new_performer("Éxample Ünit")], "tags": [tag(None, "Ëxample Tag")]}],
+            "2": [{"performers": [new_performer("éxample ünit")], "tags": [tag(None, "ëxample tag")]}],
+            "3": [{"performers": [new_performer("ÉXAMPLE ÜNIT")], "tags": [tag(None, "ËXAMPLE TAG")]}],
+        }
+        settings = {"createMissingPerformers": True, "createMissingTags": True}
+        stub, _ = self.run_images(settings, scrapes)
+        self.assertEqual([c["name"] for c in stub.creates("performerCreate")], ["Éxample Ünit", "éxample ünit"])
+        self.assertEqual([c["name"] for c in stub.creates("tagCreate")], ["Ëxample Tag", "ëxample tag"])
+        self.assertEqual(stub.updates()[2]["performer_ids"], ["101"])
+
+    def test_skip_single_name_uses_the_raw_name_and_disambiguation_like_identify(self):
+        scrapes = {
+            "1": [
+                {
+                    "performers": [
+                        new_performer("u_example_user "),
+                        new_performer("u_other_user", disambiguation=" "),
+                        new_performer("u_skipped_user", disambiguation=""),
+                    ]
+                }
+            ]
+        }
+        settings = {"createMissingPerformers": True, "skipSingleNamePerformers": True}
+        stub, _ = self.run_images(settings, scrapes)
+        self.assertEqual(stub.creates("performerCreate"), [{"name": "u_example_user"}, {"name": "u_other_user"}])
+
+    def test_created_id_already_linked_or_scraped_is_not_sent_twice(self):
+        scrapes = {
+            "1": [{"performers": [new_performer("u_example_user")]}],
+            # stored ID and a run-cache hit resolve to the same performer
+            "2": [{"performers": [performer("101", "u_example_user"), new_performer("U_EXAMPLE_USER")]}],
+            # the image already has the performer the cache hit resolves to
+            "3": [{"performers": [new_performer("u_example_user")]}],
+        }
+        images = [
+            image(1, SUB + "1.jpg"),
+            image(2, SUB + "2.jpg"),
+            image(3, SUB + "3.jpg", performers=[linked("101", "u_example_user")]),
+        ]
+        stub, log = self.run_images({"createMissingPerformers": True}, scrapes, images=images)
+        self.assertEqual(len(stub.calls("performerCreate")), 1)
+        self.assertEqual(stub.updates(), [{"id": "1", "performer_ids": ["101"]}, {"id": "2", "performer_ids": ["101"]}])
+        self.assertIn("updated 2, unchanged 1", joined(log))
+
     def test_invalid_boolean_settings_are_refused(self):
         for setting in ("createMissingPerformers", "createMissingTags", "skipSingleNamePerformers"):
             with self.subTest(setting=setting):
