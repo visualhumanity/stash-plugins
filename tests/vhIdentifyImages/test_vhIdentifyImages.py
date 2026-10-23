@@ -673,15 +673,18 @@ def operation_names(stub):
 
 
 class StudioTests(unittest.TestCase):
-    def run_images(self, settings, scrapes, images=None):
+    REDDIT = {"studios": [{"id": "3", "name": "Reddit"}]}
+
+    def run_images(self, settings, scrapes, images=None, entities=None):
         images = images or [image(i, f"{SUB}{i}.jpg") for i in sorted(scrapes, key=int)]
-        with FakeStash(images, settings=settings, scrapes=scrapes) as stub:
+        with FakeStash(images, settings=settings, scrapes=scrapes, entities=entities) as stub:
             log = run_plugin(stub)
         return stub, log
 
-    def one(self, settings, scraped_studio, existing=None):
+    def one(self, settings, scraped_studio, existing=None, entities=None):
         img = image(1, SUB + "1.jpg", studio=existing)
-        return self.run_images(settings, {"1": [{"title": "Example Image", "studio": scraped_studio}]}, images=[img])
+        scrapes = {"1": [{"title": "Example Image", "studio": scraped_studio}]}
+        return self.run_images(settings, scrapes, images=[img], entities=entities)
 
     def studio_updates(self, stub):
         return [u.get("studio_id") for u in stub.updates() if "studio_id" in u]
@@ -719,8 +722,8 @@ class StudioTests(unittest.TestCase):
                 self.assertEqual(operation_names(stub), ["ImageUpdate"])
 
     def test_matched_studio_and_its_parent_are_never_edited(self):
-        scraped = studio("r_ExampleSub", stored_id="4", urls=[SUB_URL], parent=studio("Reddit", stored_id="3", urls=[PARENT_URL]))
-        stub, _ = self.one({"createMissingStudios": True}, scraped)
+        scraped = studio("r_ExampleSub", stored_id="4", urls=[SUB_URL], parent=studio("Reddit", urls=[PARENT_URL]))
+        stub, _ = self.one({"createMissingStudios": True}, scraped, entities=self.REDDIT)
         self.assertEqual(operation_names(stub), ["ImageUpdate"])
 
     def test_unmatched_studio_is_dropped_when_create_is_off(self):
@@ -761,9 +764,10 @@ class StudioTests(unittest.TestCase):
         self.assertIn("studios created 2", joined(log))
 
     def test_existing_parent_gets_the_scraped_parent_fields(self):
-        parent = studio("Reddit", stored_id="3", urls=[PARENT_URL], details="Example parent details", aliases="Example Alias, Other Alias")
+        # Stash never matches a scraped parent, so the plugin finds "Reddit" by name
+        parent = studio("Reddit", urls=[PARENT_URL], details="Example parent details", aliases="Example Alias, Other Alias")
         scraped = studio("r_ExampleSub", urls=[SUB_URL], parent=parent)
-        stub, log = self.one({"createMissingStudios": True}, scraped)
+        stub, log = self.one({"createMissingStudios": True}, scraped, entities=self.REDDIT)
         self.assertEqual(operation_names(stub), ["StudioUpdate", "StudioCreate", "ImageUpdate"])
         self.assertEqual(
             stub.calls("studioUpdate")[0]["variables"]["input"],
@@ -773,15 +777,55 @@ class StudioTests(unittest.TestCase):
         self.assertIn("studios created 1", joined(log))
 
     def test_existing_parent_gets_its_own_matched_parent(self):
-        grandparent = studio("Example Network", stored_id="2")
-        scraped = studio("r_ExampleSub", parent=studio("Reddit", stored_id="3", parent=grandparent))
-        stub, _ = self.one({"createMissingStudios": True}, scraped)
+        entities = {"studios": [{"id": "2", "name": "Example Network"}, {"id": "3", "name": "Reddit"}]}
+        scraped = studio("r_ExampleSub", parent=studio("Reddit", parent=studio("Example Network")))
+        stub, _ = self.one({"createMissingStudios": True}, scraped, entities=entities)
         self.assertEqual(stub.calls("studioUpdate")[0]["variables"]["input"], {"id": "3", "name": "Reddit", "parent_id": "2"})
         self.assertEqual(stub.creates("studioCreate"), [{"name": "r_ExampleSub", "parent_id": "3"}])
 
-    def test_parent_update_sends_only_fields_the_scrape_returned(self):
-        scraped = studio("r_ExampleSub", parent=studio("Reddit", stored_id="3", urls=[], details="  "))
+    def test_dry_run_finds_an_existing_parent_instead_of_planning_to_create_it(self):
+        scraped = studio("r_ExampleSub", parent=studio("Reddit", urls=[PARENT_URL]))
+        stub, log = self.one({"createMissingStudios": True, "dryRun": True}, scraped, entities=self.REDDIT)
+        text = joined(log)
+        self.assertEqual(stub.mutations(), [])
+        self.assertNotIn("would create studio 'Reddit'", text)
+        self.assertIn("would update studio 3 ('Reddit')", text)
+        self.assertIn("studios created 1", text)
+
+    def test_parent_found_with_other_letter_case_is_renamed_like_identify(self):
+        scraped = studio("r_ExampleSub", parent=studio("Reddit"))
+        stub, _ = self.one({"createMissingStudios": True}, scraped, entities={"studios": [{"id": "3", "name": "reddit"}]})
+        self.assertEqual(stub.calls("studioUpdate")[0]["variables"]["input"], {"id": "3", "name": "Reddit"})
+        self.assertEqual(stub.creates("studioCreate"), [{"name": "r_ExampleSub", "parent_id": "3"}])
+
+    def test_parent_found_by_alias_is_linked_and_not_renamed(self):
+        entities = {"studios": [{"id": "3", "name": "Reddit Network", "aliases": ["Reddit"]}]}
+        scraped = studio("r_ExampleSub", parent=studio("Reddit", urls=[PARENT_URL]))
+        stub, _ = self.one({"createMissingStudios": True}, scraped, entities=entities)
+        self.assertEqual(stub.calls("studioUpdate")[0]["variables"]["input"], {"id": "3", "urls": [PARENT_URL]})
+        self.assertEqual(stub.creates("studioCreate"), [{"name": "r_ExampleSub", "parent_id": "3"}])
+        self.assertEqual(stub.updates(), [{"id": "1", "title": "Example Image", "studio_id": "101"}])
+
+    def test_parent_found_by_alias_with_nothing_to_write_is_not_updated(self):
+        entities = {"studios": [{"id": "3", "name": "Reddit Network", "aliases": ["Reddit"]}]}
+        stub, _ = self.one({"createMissingStudios": True}, studio("r_ExampleSub", parent=studio("Reddit")), entities=entities)
+        self.assertEqual(stub.calls("studioUpdate"), [])
+        self.assertEqual(stub.creates("studioCreate"), [{"name": "r_ExampleSub", "parent_id": "3"}])
+
+    def test_missing_grandparent_is_not_created(self):
+        scraped = studio("r_ExampleSub", parent=studio("Reddit", parent=studio("Example Network")))
         stub, _ = self.one({"createMissingStudios": True}, scraped)
+        self.assertEqual(stub.creates("studioCreate"), [{"name": "Reddit"}, {"name": "r_ExampleSub", "parent_id": "101"}])
+
+    def test_new_parent_gets_an_existing_grandparent(self):
+        scraped = studio("r_ExampleSub", parent=studio("Reddit", parent=studio("Example Network")))
+        entities = {"studios": [{"id": "2", "name": "Example Network"}]}
+        stub, _ = self.one({"createMissingStudios": True}, scraped, entities=entities)
+        self.assertEqual(stub.creates("studioCreate")[0], {"name": "Reddit", "parent_id": "2"})
+
+    def test_parent_update_sends_only_fields_the_scrape_returned(self):
+        scraped = studio("r_ExampleSub", parent=studio("Reddit", urls=[], details="  "))
+        stub, _ = self.one({"createMissingStudios": True}, scraped, entities=self.REDDIT)
         self.assertEqual(stub.calls("studioUpdate")[0]["variables"]["input"], {"id": "3", "name": "Reddit"})
 
     def test_existing_studio_is_never_edited_when_linking(self):
@@ -824,20 +868,23 @@ class StudioTests(unittest.TestCase):
 
     def test_existing_parent_is_updated_once_per_run(self):
         scrapes = {
-            "1": [{"studio": studio("r_ExampleSub", parent=studio("Reddit", stored_id="3", urls=[PARENT_URL]))}],
-            "2": [{"studio": studio("r_OtherSub", parent=studio("Reddit", stored_id="3", urls=[PARENT_URL]))}],
+            "1": [{"studio": studio("r_ExampleSub", parent=studio("Reddit", urls=[PARENT_URL]))}],
+            "2": [{"studio": studio("r_OtherSub", parent=studio("Reddit", urls=[PARENT_URL]))}],
         }
-        stub, _ = self.run_images({"createMissingStudios": True}, scrapes)
+        stub, _ = self.run_images({"createMissingStudios": True}, scrapes, entities=self.REDDIT)
         self.assertEqual(len(stub.calls("studioUpdate")), 1)
         self.assertEqual(len(stub.calls("studioCreate")), 2)
+        # the parent is looked up once per run
+        self.assertEqual(len(stub.calls("findStudios")), 1)
 
     def test_dry_run_logs_creates_and_parent_update_with_no_mutations(self):
         scrapes = {
             "1": [{"studio": studio("r_ExampleSub", parent=studio("Reddit"))}],
             "2": [{"studio": studio("r_ExampleSub", parent=studio("Reddit"))}],
-            "3": [{"studio": studio("r_OtherSub", parent=studio("Example Parent", stored_id="3", urls=[PARENT_URL]))}],
+            "3": [{"studio": studio("r_OtherSub", parent=studio("Example Parent", urls=[PARENT_URL]))}],
         }
-        stub, log = self.run_images({"createMissingStudios": True, "dryRun": True}, scrapes)
+        entities = {"studios": [{"id": "3", "name": "Example Parent"}]}
+        stub, log = self.run_images({"createMissingStudios": True, "dryRun": True}, scrapes, entities=entities)
         self.assertEqual(stub.mutations(), [])
         text = joined(log)
         self.assertEqual(text.count("would create studio 'Reddit'"), 1)
@@ -1135,6 +1182,16 @@ class CreateRaceTests(unittest.TestCase):
             run_plugin(stub)
         self.assertEqual(len(stub.calls("performerCreate")), 1)
         self.assertEqual([u["performer_ids"] for u in stub.updates()], [["50"], ["50"]])
+
+    def test_alias_clash_links_the_tag_or_studio_that_has_the_alias(self):
+        entities = {
+            "tags": [{"id": "60", "name": "Example Tag Full", "aliases": ["Example Tag"]}],
+            "studios": [{"id": "70", "name": "Example Sub Full", "aliases": ["r_ExampleSub"]}],
+        }
+        scrape = {"tags": [tag(None, "example tag")], "studio": studio("r_ExampleSub")}
+        stub, log = self.run_one(scrape, entities)
+        self.assertEqual(stub.updates(), [{"id": "1", "tag_ids": ["60"], "studio_id": "70"}])
+        self.assertEqual(joined(log, "e"), "")
 
     def test_scan_hook_links_after_a_clash(self):
         entities = {"performers": [{"id": "50", "name": "u_example_user", "disambiguation": None}]}

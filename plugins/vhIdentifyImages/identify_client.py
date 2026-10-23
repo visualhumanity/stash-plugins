@@ -81,7 +81,7 @@ query FindPerformersByName($performer_filter: PerformerFilterType, $filter: Find
     "tags": (
         """
 query FindTagsByName($tag_filter: TagFilterType, $filter: FindFilterType) {
-  findTags(tag_filter: $tag_filter, filter: $filter) { tags { id name } }
+  findTags(tag_filter: $tag_filter, filter: $filter) { tags { id name aliases } }
 }""",
         "findTags",
         "tag_filter",
@@ -90,7 +90,7 @@ query FindTagsByName($tag_filter: TagFilterType, $filter: FindFilterType) {
     "studio": (
         """
 query FindStudiosByName($studio_filter: StudioFilterType, $filter: FindFilterType) {
-  findStudios(studio_filter: $studio_filter, filter: $filter) { studios { id name } }
+  findStudios(studio_filter: $studio_filter, filter: $filter) { studios { id name aliases } }
 }""",
         "findStudios",
         "studio_filter",
@@ -201,13 +201,14 @@ class StashClient:
         }[field]
         return self.call(query, {"input": create_input})[name]["id"]
 
-    def find_by_name(self, field, name):
-        """Performers, tags or studios whose name matches name under Stash's EQUALS (SQL LIKE).
+    def find_by_name(self, field, name, attribute="name"):
+        """Performers, tags or studios whose name (or, with attribute "aliases", an alias)
+        matches under Stash's EQUALS, which is SQL LIKE.
 
         LIKE treats % and _ as wildcards, so callers must compare names themselves.
         """
         query, root, filter_arg, key = FIND_BY_NAME[field]
-        variables = {filter_arg: {"name": {"value": name, "modifier": "EQUALS"}}, "filter": {"per_page": -1}}
+        variables = {filter_arg: {attribute: {"value": name, "modifier": "EQUALS"}}, "filter": {"per_page": -1}}
         return self.call(query, variables)[root][key] or []
 
     def update_studio(self, update_input):

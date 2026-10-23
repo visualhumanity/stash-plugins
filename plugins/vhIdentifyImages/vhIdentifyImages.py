@@ -89,6 +89,8 @@ class RunState:
         self.updated_parents = set()
         # creates and studio updates sent so far
         self.writes = 0
+        # studio key -> (existing ID, how it matched) or (None, None), from name and alias lookups
+        self.studio_lookups = {}
 
 
 SINGULAR = {"performers": "performer", "tags": "tag", "studio": "studio"}
@@ -102,24 +104,46 @@ def _same_entity(field, entity, create_input):
     return True
 
 
+def find_existing(stash, field, create_input):
+    """The one existing performer, tag or studio for a name, as (entity, matched_by), or (None, None).
+
+    Looks up by name, then (tags and studios) by alias, the way Stash matches
+    scraped names. Stash's EQUALS is SQL LIKE, so results are compared again
+    here: exact name, ASCII case ignored, same disambiguation for performers.
+    """
+    found = [e for e in stash.find_by_name(field, create_input["name"]) if _same_entity(field, e, create_input)]
+    if len(found) == 1:
+        return found[0], "name"
+    if found or field == "performers":
+        return None, None
+    wanted = fold_case(create_input["name"])
+    found = [
+        e
+        for e in stash.find_by_name(field, create_input["name"], attribute="aliases")
+        if any(fold_case(alias) == wanted for alias in e.get("aliases") or [])
+    ]
+    if len(found) == 1:
+        return found[0], "alias"
+    return None, None
+
+
 def create_or_link(stash, field, create_input, label, log):
     """Create a performer, tag or studio; return (id, created).
 
-    When the create fails because the name already exists (a parallel scan
-    hook or another client created it after the scrape), link the existing
-    one instead, if exactly one has that exact name (ASCII case ignored, as
-    Stash matches names). Otherwise the create error is raised.
+    When the create fails because the name already exists, or is another
+    tag's or studio's alias (a parallel scan hook or another client created
+    it after the scrape), link that one instead, if exactly one matches.
+    Otherwise the create error is raised.
     """
     try:
         new_id = str(stash.create(field, create_input))
         return new_id, True
     except RuntimeError as exc:
-        if "already exists" not in str(exc):
+        if "already exists" not in str(exc) and "is used as alias for" not in str(exc):
             raise
-        found = [e for e in stash.find_by_name(field, create_input["name"]) if _same_entity(field, e, create_input)]
-        if len(found) != 1:
+        entity, _matched_by = find_existing(stash, field, create_input)
+        if entity is None:
             raise
-        entity = found[0]
         log.info(f"{label}: linked existing {SINGULAR[field]} {entity['name']!r} (id {entity['id']}) after a name clash")
         return str(entity["id"]), False
 
@@ -178,21 +202,55 @@ def _create_studio(stash, settings, item, parent_id, state, label, log):
     return state.created_ids[key]
 
 
+def _existing_studio(stash, item, state):
+    """Find a scraped studio in Stash by name, then alias, once per run.
+
+    Stash matches a scraped image's studio but not its parent, so the parent
+    (and its own parent) must be looked up here. Returns (id, matched_by) or
+    (None, None).
+    """
+    if item.get("stored_id") is not None:
+        return str(item["stored_id"]), "stored_id"
+    key = studio_key(studio_name(item))
+    if key not in state.studio_lookups:
+        entity, matched_by = find_existing(stash, "studio", {"name": studio_name(item)})
+        state.studio_lookups[key] = (str(entity["id"]), matched_by) if entity else (None, None)
+    return state.studio_lookups[key]
+
+
 def _apply_parent(stash, settings, parent, state, label, log):
-    """Identify's parent handling for a studio about to be created; return the parent ID."""
+    """Identify's parent handling for a studio about to be created; return the parent ID.
+
+    A parent that exists gets the scraped parent's fields written to it; a
+    missing one is created. Its own parent is only linked when it exists.
+    """
     if not studio_name(parent):
         return None
-    if parent.get("stored_id") is None:
-        return _create_studio(stash, settings, parent, None, state, label, log)
-    update = studio_update_input(parent)
+    key = studio_key(studio_name(parent))
+    if key in state.created_ids:
+        return state.created_ids[key]
+    grandparent = parent.get("parent")
+    grandparent_id = _existing_studio(stash, grandparent, state)[0] if studio_name(grandparent) else None
+    parent_id, matched_by = _existing_studio(stash, parent, state)
+    if parent_id is None:
+        return _create_studio(stash, settings, parent, grandparent_id, state, label, log)
+    update = studio_update_input(dict(parent, stored_id=parent_id))
+    if grandparent_id:
+        update["parent_id"] = grandparent_id
+    if matched_by == "alias":
+        # the scraped name is this studio's alias; writing it as the name would clash
+        update.pop("name")
     if update["id"] not in state.updated_parents:
         fields = {k: v for k, v in update.items() if k != "id"}
-        if settings.dry_run:
-            log.info(f"{label}: would update studio {update['id']} ({update['name']!r}) with {fields!r}")
+        shown = f"{update['id']} ({studio_name(parent)!r})"
+        if not fields:
+            pass
+        elif settings.dry_run:
+            log.info(f"{label}: would update studio {shown} with {fields!r}")
         else:
             stash.update_studio(update)
             state.writes += 1
-            log.info(f"{label}: updated studio {update['id']} ({update['name']!r}) with {fields!r}")
+            log.info(f"{label}: updated studio {shown} with {fields!r}")
         state.updated_parents.add(update["id"])
     return update["id"]
 

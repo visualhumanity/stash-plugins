@@ -239,7 +239,12 @@ class FakeStash:
             image_id = str(variables["input"]["image_id"])
             if image_id in self.scrape_errors:
                 return {"errors": [{"message": "scraper failed for this image"}]}
-            return {"data": {"scrapeSingleImage": self.scrapes.get(image_id, [])}}
+            results = self.scrapes.get(image_id, [])
+            for result in results:
+                parent = (result.get("studio") or {}).get("parent") or {}
+                # Stash matches a scraped image's studio, never its parent
+                assert parent.get("stored_id") is None, "Stash never sends a stored_id on a scraped parent studio"
+            return {"data": {"scrapeSingleImage": results}}
         if "studioUpdate" in query:
             return {"data": {"studioUpdate": {"id": variables["input"]["id"]}}}
         for mutation, (kind, finder, key) in ENTITY_MUTATIONS.items():
@@ -293,6 +298,10 @@ class FakeStash:
         if name in self.create_errors:
             return {"errors": [{"message": f"{mutation} rejected"}]}
         disambiguation = create_input.get("disambiguation") or ""
+        if kind != "performers":
+            for entity in self.entities[kind]:
+                if any(_fold(alias) == _fold(name) for alias in entity.get("aliases") or []):
+                    return {"errors": [{"message": f"name '{name}' is used as alias for '{entity['name']}'"}]}
         for entity in self.entities[kind]:
             same_disambiguation = kind != "performers" or _fold(entity.get("disambiguation")) == _fold(disambiguation)
             if _fold(entity["name"]) == _fold(name) and same_disambiguation:
@@ -306,7 +315,10 @@ class FakeStash:
         matches = self.entities[kind]
         for field, criterion in filters.items():
             assert criterion["modifier"] == "EQUALS", criterion
-            matches = [e for e in matches if _like(e.get(field), criterion["value"])]
+            if field == "aliases":
+                matches = [e for e in matches if any(_like(a, criterion["value"]) for a in e.get("aliases") or [])]
+            else:
+                matches = [e for e in matches if _like(e.get(field), criterion["value"])]
         return matches
 
     def find_images(self, variables):
