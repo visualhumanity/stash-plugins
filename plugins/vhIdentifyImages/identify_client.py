@@ -119,9 +119,15 @@ class StashClient:
         scrapers = self.call(LIST_IMAGE_SCRAPERS, {"types": ["IMAGE"]})["listScrapers"] or []
         return {s["id"]: (s.get("image") or {}).get("supported_scrapes") or [] for s in scrapers}
 
-    def find_images(self, prefixes, limit):
-        """List (id, path) for images under the prefixes, sorted by path, up to limit (0 = all)."""
+    def find_images(self, prefixes, limit, skip_organized=False):
+        """List (id, path) for images under the prefixes, sorted by path, up to limit (0 = all).
+
+        With skip_organized, organized images are filtered out by Stash, so the
+        limit counts only images that will be processed.
+        """
         image_filter = {}
+        if skip_organized:
+            image_filter["organized"] = False
         if prefixes:
             image_filter["path"] = {"value": prefix_regex(prefixes), "modifier": "MATCHES_REGEX"}
         found, page = [], 1

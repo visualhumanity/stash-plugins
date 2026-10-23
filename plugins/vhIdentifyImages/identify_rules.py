@@ -242,6 +242,15 @@ def pending_creates(changes):
     ]
 
 
+def add_organized(image, changes):
+    """Mark an image that is being updated, as Identify's setOrganized does.
+
+    Unlike Identify, an image with no other change is not touched.
+    """
+    if changes and not image.get("organized"):
+        changes["organized"] = (False, True)
+
+
 def build_update_input(image_id, changes):
     update = {"id": image_id}
     for field, (_old, new) in changes.items():

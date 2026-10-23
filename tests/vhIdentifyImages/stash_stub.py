@@ -159,6 +159,8 @@ class FakeStash:
             pattern = re.compile(path["value"])
             # an image with no file never matches a path filter
             matches = [img for img in matches if _path(img) is not None and pattern.search(_path(img))]
+        if "organized" in image_filter:
+            matches = [img for img in matches if img["organized"] == image_filter["organized"]]
         page, per_page = find_filter.get("page", 1), find_filter.get("per_page", 25)
         start = (page - 1) * per_page
         window = matches[start : start + per_page]

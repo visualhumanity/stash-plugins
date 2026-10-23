@@ -784,6 +784,82 @@ class StudioTests(unittest.TestCase):
         self.assertIn("studios created 3", text)
 
 
+class OrganizedTests(unittest.TestCase):
+    def run_images(self, settings, images, scrapes):
+        with FakeStash(images, settings=settings, scrapes=scrapes) as stub:
+            log = run_plugin(stub)
+        return stub, log
+
+    def test_set_organized_marks_updated_images_only(self):
+        images = [
+            image(1, SUB + "1.jpg"),
+            image(2, SUB + "2.jpg", title="Example Image"),
+            image(3, SUB + "3.jpg", organized=True),
+            image(4, SUB + "4.jpg"),
+        ]
+        scrapes = {
+            "1": [{"title": "Example Image"}],
+            "2": [{"title": "Example Image"}],
+            "3": [{"title": "Example Image"}],
+        }
+        stub, log = self.run_images({"setOrganized": True}, images, scrapes)
+        self.assertEqual(
+            stub.updates(),
+            [{"id": "1", "title": "Example Image", "organized": True}, {"id": "3", "title": "Example Image"}],
+        )
+        self.assertIn("processed 4, updated 2, unchanged 1, no result 1", joined(log))
+
+    def test_set_organized_off_by_default(self):
+        stub, _ = self.run_images({}, [image(1, SUB + "1.jpg")], {"1": [{"title": "Example Image"}]})
+        self.assertEqual(stub.updates(), [{"id": "1", "title": "Example Image"}])
+
+    def test_set_organized_with_only_a_kept_link_does_not_touch_the_image(self):
+        img = image(1, SUB + "1.jpg", performers=[linked("5", "Existing")])
+        scrapes = {"1": [{"performers": [performer(None, "u_example_user")]}]}
+        stub, _ = self.run_images({"setOrganized": True, "fieldPerformers": "overwrite"}, [img], scrapes)
+        self.assertEqual(stub.mutations(), [])
+
+    def test_skip_organized_leaves_organized_images_out_of_the_query(self):
+        images = [
+            image(1, SUB + "1.jpg", organized=True),
+            image(2, SUB + "2.jpg", organized=True),
+            image(3, SUB + "3.jpg"),
+            image(4, SUB + "4.jpg"),
+            image(5, SUB + "5.jpg"),
+        ]
+        stub, _ = self.run_images({"skipOrganized": True, "imageLimit": 2}, images, {})
+        self.assertEqual(stub.scraped_ids(), ["3", "4"])
+        for body in stub.calls("findImages"):
+            self.assertIs(body["variables"]["image_filter"]["organized"], False)
+
+    def test_organized_images_are_processed_when_skip_is_off(self):
+        images = [image(1, SUB + "1.jpg", organized=True), image(2, SUB + "2.jpg")]
+        stub, _ = self.run_images({}, images, {})
+        self.assertEqual(stub.scraped_ids(), ["1", "2"])
+        for body in stub.calls("findImages"):
+            self.assertNotIn("organized", body["variables"].get("image_filter") or {})
+
+    def test_skip_organized_combines_with_folder_prefixes(self):
+        images = [image(1, SUB + "1.jpg", organized=True), image(2, SUB + "2.jpg"), image(3, OTHER + "3.jpg")]
+        stub, _ = self.run_images({"skipOrganized": True, "folderPrefixes": SUB}, images, {})
+        self.assertEqual(stub.scraped_ids(), ["2"])
+
+    def test_dry_run_logs_the_organized_change(self):
+        stub, log = self.run_images(
+            {"setOrganized": True, "dryRun": True}, [image(1, SUB + "1.jpg")], {"1": [{"title": "Example Image"}]}
+        )
+        self.assertEqual(stub.mutations(), [])
+        self.assertIn("organized: False -> True", joined(log))
+
+    def test_invalid_settings_are_refused(self):
+        for setting in ("setOrganized", "skipOrganized"):
+            with self.subTest(setting=setting):
+                stub, log = self.run_images({setting: "true"}, [image(1, SUB + "1.jpg")], {})
+                self.assertIn(setting, joined(log, "e"))
+                self.assertEqual(stub.calls("findImages"), [])
+                self.assertEqual(stub.mutations(), [])
+
+
 class DryRunTests(unittest.TestCase):
     def test_dry_run_sends_no_update_and_logs_old_and_new_values(self):
         img = image(1, SUB + "a.jpg", title="Old Title")
@@ -981,6 +1057,8 @@ class ManifestTests(unittest.TestCase):
             "createMissingTags": "BOOLEAN",
             "createMissingStudios": "BOOLEAN",
             "skipSingleNamePerformers": "BOOLEAN",
+            "setOrganized": "BOOLEAN",
+            "skipOrganized": "BOOLEAN",
             "dryRun": "BOOLEAN",
             "imageLimit": "NUMBER",
         }

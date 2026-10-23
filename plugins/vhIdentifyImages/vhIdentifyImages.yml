@@ -67,6 +67,14 @@ settings:
     displayName: Skip single-name performers
     description: Do not create a performer whose name has no space and who has no disambiguation, as in Identify. Keep off for Reddit uploaders such as u_example_user.
     type: BOOLEAN
+  setOrganized:
+    displayName: Set organized
+    description: Also mark an image organized when the plugin updates it. Images with no change are not touched.
+    type: BOOLEAN
+  skipOrganized:
+    displayName: Skip organized images
+    description: Leave organized images out of the run. They do not count toward the image limit.
+    type: BOOLEAN
   dryRun:
     displayName: Dry run
     description: Log each image's changes (field, old value, new value) without writing anything.

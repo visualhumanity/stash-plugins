@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from identify_client import StashClient, image_path  # noqa: E402
 from identify_rules import (  # noqa: E402
+    add_organized,
     build_update_input,
     describe_changes,
     describe_report,
@@ -185,6 +186,8 @@ def process_image(stash, settings, image_id, label, state, log):
         log.info(f"{label}: {describe_report(report)}")
     resolve_studio(stash, settings, changes, state, label, log)
     resolve_creates(stash, settings, changes, state, label, log)
+    if settings.set_organized:
+        add_organized(image, changes)
     if not changes:
         return "unchanged"
     if settings.dry_run:
@@ -207,7 +210,7 @@ def check_sources(stash, sources):
 
 
 def run_task(stash, settings, log):
-    images = stash.find_images(settings.folder_prefixes, settings.image_limit)
+    images = stash.find_images(settings.folder_prefixes, settings.image_limit, settings.skip_organized)
     mode = " (dry run, nothing is written)" if settings.dry_run else ""
     log.info(f"identifying {len(images)} image(s) with {', '.join(settings.sources)}{mode}")
 

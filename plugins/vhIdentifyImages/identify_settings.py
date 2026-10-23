@@ -37,6 +37,8 @@ class Settings:
     create_missing_tags: bool
     create_missing_studios: bool
     skip_single_name_performers: bool
+    set_organized: bool
+    skip_organized: bool
     dry_run: bool
     image_limit: int
 
@@ -125,6 +127,8 @@ def parse_settings(raw):
         create_missing_tags=_boolean(raw, "createMissingTags", errors),
         create_missing_studios=_boolean(raw, "createMissingStudios", errors),
         skip_single_name_performers=_boolean(raw, "skipSingleNamePerformers", errors),
+        set_organized=_boolean(raw, "setOrganized", errors),
+        skip_organized=_boolean(raw, "skipOrganized", errors),
         dry_run=_boolean(raw, "dryRun", errors),
         image_limit=_image_limit(raw, errors),
     )

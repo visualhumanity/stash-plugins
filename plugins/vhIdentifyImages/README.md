@@ -39,6 +39,8 @@ Stash plugin settings have no stored defaults: an empty setting means the defaul
 | Create missing tags | on/off | off | Create scraped tags that are not in Stash yet, then link them. |
 | Create missing studios | on/off | off | Create a scraped studio that is not in Stash yet (and its parent), then link it. See studio. |
 | Skip single-name performers | on/off | off | Do not create a performer whose name has no space and who has no disambiguation. |
+| Set organized | on/off | off | Also mark an image organized when it is updated. See organized. |
+| Skip organized images | on/off | off | Leave organized images out of the run, so reruns skip finished images. They do not count toward the image limit. |
 | Dry run | on/off | off | Compute and log every change without writing anything. |
 | Image limit | number | 0 (no limit) | Stop after this many images, in path order. |
 
@@ -92,6 +94,12 @@ The studio follows the single-value rule: `merge` sets it only when the image ha
 - Each missing studio (and parent) is created once per run and reused. Names compare without regard to case.
 - The end summary adds `studios created`, counting parents too. With Dry run on, it counts what would be created, and the log shows each would-be create and parent update.
 
+### Organized
+
+- **Set organized**: an image the plugin updates also gets marked organized, in the same update. An image already organized is not changed again. Dry run logs it as `organized: False -> True`.
+- Difference from Identify: Identify's Set organized marks every scene it gets a scrape result for, even when nothing else changes. This plugin marks only images it actually updates; an image with no other change is not touched.
+- **Skip organized images**: organized images are filtered out when the run lists images, before any scrape, so the image limit counts only images that will be processed. Combine both options to work through a library in batches.
+
 ## Mapping to Identify
 
 | Identify | This plugin |
@@ -100,6 +108,7 @@ The studio follows the single-value rule: `merge` sets it only when the image ha
 | Field options: Title, Code, Details, Date, URLs, Studio, Performers, Tags | Title, Code, Details, Date, URLs, Studio, Performers, Tags options |
 | Create missing (performers, tags, studio) | Create missing performers, Create missing tags, Create missing studios |
 | Skip single-name performers | Same (the "skipped" tag option is not supported) |
+| Set organized | Same, but only for images that change (see organized) |
 | Default strategy for an unset field: merge | Same |
 | Paths to process | Folder prefixes |
 
