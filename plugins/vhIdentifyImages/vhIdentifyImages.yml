@@ -1,6 +1,6 @@
 name: VH - Identify Images
 description: Identify for images. Scrapes images under chosen folders with an image scraper and applies the results using Identify's ignore, merge and overwrite rules.
-version: 0.2.0
+version: 1.0.0
 ui:
   javascript:
     - vhIdentifyImages.js
