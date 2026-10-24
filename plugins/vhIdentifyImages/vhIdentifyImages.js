@@ -6,6 +6,8 @@
   const h = React.createElement;
 
   const PLUGIN_ID = "vhIdentifyImages";
+  // set on the fallback render so this plugin's patch shows the plain settings
+  const PLAIN_FLAG = "vhIdentifyImagesPlain";
 
   // Field options in Identify's order. setting/create mirror FIELD_SETTINGS and the
   // create-missing settings in identify_settings.py and the manifest.
@@ -70,10 +72,47 @@
     );
   };
 
-  // Renders Stash's own PluginSettings for a subset of settings. Calling it from a
-  // stable component keeps React from remounting it when the patch chain hands us
-  // a new function on each render.
-  const StockSettings = ({ render, pluginID, settings }) => render({ pluginID, settings });
+  // Renders the rest of the PluginSettings patch chain (other plugins' patches, then
+  // Stash's own component) for a subset of settings. Calling it from a stable
+  // component keeps React from remounting it when the chain hands us a new function
+  // on each render.
+  //
+  // The chain must be called the way Stash calls a component: (props, ctx). Stash
+  // appends the next function in the chain as the last argument, so a call with
+  // only props would hand the next plugin's patch our function in place of its own.
+  //
+  // Limitation: Stash counts its way through the chain once per render of the
+  // patched component, and this plugin calls the chain twice (above and below the
+  // Field options section). With two or more other plugins patching PluginSettings
+  // after this one, the second call skips the remaining patches and renders Stash's
+  // own component for that block. Nothing is lost; those patches just do not apply
+  // to the lower block.
+  const StockSettings = ({ render, pluginID, settings }) => render({ pluginID, settings }, undefined);
+
+  // If the custom layout fails (for example because of another plugin's patch),
+  // show the plain settings instead of breaking the whole Settings > Plugins page.
+  class SettingsBoundary extends React.Component {
+    constructor(props) {
+      super(props);
+      this.state = { failed: false };
+    }
+
+    static getDerivedStateFromError() {
+      return { failed: true };
+    }
+
+    componentDidCatch(error) {
+      console.warn(`${PLUGIN_ID}: custom settings layout failed, showing plain settings`, error);
+    }
+
+    render() {
+      if (!this.state.failed) return this.props.children;
+      const { PluginSettings } = api.components;
+      const { pluginID, settings } = this.props;
+      // a fresh run of the whole patch chain, with this plugin's patch passing through
+      return h(PluginSettings, { pluginID, settings, [PLAIN_FLAG]: true });
+    }
+  }
 
   const IdentifyImagesSettings = ({ pluginID, settings, original }) => {
     const { SettingGroup, BooleanSetting } = api.components;
@@ -137,9 +176,13 @@
   };
 
   patch.instead("PluginSettings", function (props, ctx, original) {
-    if (props.pluginID !== PLUGIN_ID) {
+    if (props.pluginID !== PLUGIN_ID || props[PLAIN_FLAG]) {
       return original(props, ctx);
     }
-    return h(IdentifyImagesSettings, { ...props, original });
+    return h(
+      SettingsBoundary,
+      { pluginID: props.pluginID, settings: props.settings },
+      h(IdentifyImagesSettings, { ...props, original })
+    );
   });
 })();
