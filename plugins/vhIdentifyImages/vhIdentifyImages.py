@@ -11,7 +11,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from identify_client import StashClient, image_path  # noqa: E402
+from identify_client import StashClient, Unauthorized, image_path  # noqa: E402
 from identify_rules import (  # noqa: E402
     add_organized,
     build_update_input,
@@ -67,6 +67,8 @@ def scrape(stash, sources, image_id):
     for source in sources:
         try:
             results = stash.scrape_image(source, image_id)
+        except Unauthorized:
+            raise
         except Exception as exc:
             errors.append(f"{source}: {exc}")
             continue
@@ -338,20 +340,26 @@ def run_task(stash, settings, log):
 
     state = RunState()
     total = len(images)
+    processed = 0
     for index, (image_id, path) in enumerate(images, start=1):
         label = image_label(image_id, path)
         try:
             outcome = process_image(stash, settings, image_id, label, state, log)
+        except Unauthorized as exc:
+            log.error(str(exc))
+            break
         except Exception as exc:
             outcome = "failed"
             log.error(f"{label} failed: {exc}")
         state.counts[outcome] += 1
+        processed += 1
         log.progress(index / total)
 
     counts, created = state.counts, state.created
+    not_processed = f", not processed {total - processed}" if processed < total else ""
     log.info(
-        f"processed {total}, updated {counts['updated']}, unchanged {counts['unchanged']}, "
-        f"no result {counts['no result']}, failed {counts['failed']}, "
+        f"processed {processed}, updated {counts['updated']}, unchanged {counts['unchanged']}, "
+        f"no result {counts['no result']}, failed {counts['failed']}{not_processed}, "
         f"performers created {created['performers']}, tags created {created['tags']}, "
         f"studios created {created['studio']}{mode}"
     )

@@ -156,6 +156,7 @@ class FakeStash:
         scrapers=DEFAULT_SCRAPERS,
         entities=None,
         before=None,
+        intercept=None,
     ):
         # copies, because updates are applied to the stored images
         self.images = {img["id"]: copy.deepcopy(img) for img in images}
@@ -167,7 +168,14 @@ class FakeStash:
         self.settings = settings
         # image id -> list of ScrapedImage dicts (missing means an empty list)
         self.scrapes = scrapes or {}
-        self.scrape_errors = set(scrape_errors)
+        # image id -> error message (a plain collection uses a default message)
+        if isinstance(scrape_errors, dict):
+            self.scrape_errors = dict(scrape_errors)
+        else:
+            self.scrape_errors = {i: "scraper failed for this image" for i in scrape_errors}
+        # function(stub, body) -> (HTTP status, response body or JSON) to answer a request
+        # some other way, or None to answer normally
+        self.intercept = intercept
         self.update_errors = set(update_errors)
         # names whose performerCreate / tagCreate / studioCreate is rejected
         self.create_errors = set(create_errors)
@@ -186,8 +194,15 @@ class FakeStash:
                 length = int(self.headers["Content-Length"])
                 body = json.loads(self.rfile.read(length))
                 stub.requests.append({"path": self.path, "headers": dict(self.headers), "body": body})
-                payload = json.dumps(stub.respond(body)).encode()
-                self.send_response(200)
+                status, response = 200, None
+                if stub.intercept:
+                    intercepted = stub.intercept(stub, body)
+                    if intercepted is not None:
+                        status, response = intercepted
+                if response is None and status == 200:
+                    response = stub.respond(body)
+                payload = (response if isinstance(response, str) else json.dumps(response)).encode()
+                self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
@@ -238,7 +253,7 @@ class FakeStash:
         if "scrapeSingleImage" in query:
             image_id = str(variables["input"]["image_id"])
             if image_id in self.scrape_errors:
-                return {"errors": [{"message": "scraper failed for this image"}]}
+                return {"errors": [{"message": self.scrape_errors[image_id]}]}
             results = self.scrapes.get(image_id, [])
             for result in results:
                 parent = (result.get("studio") or {}).get("parent") or {}
@@ -377,6 +392,32 @@ class FakeStash:
 def hook_args(image_id, hook_type="Image.Create.Post"):
     """Args as Stash sends them for a post hook fired by a scan (input is null)."""
     return {"hookContext": {"id": int(image_id), "type": hook_type, "input": None}}
+
+
+def operation_of(body):
+    return body["query"].split("(")[0].split("{")[0].split()[-1]
+
+
+def run_plugin_raw(stub, args=None, connection=None, close_stderr=False):
+    """Run the plugin and return (exit code, raw stderr bytes).
+
+    close_stderr closes the read end of stderr at once, as happens when
+    Stash stops reading a plugin's log.
+    """
+    payload = {
+        "server_connection": connection or stub.connection(),
+        "args": {"mode": "identify"} if args is None else args,
+    }
+    proc = subprocess.Popen(
+        [sys.executable, PLUGIN_SCRIPT], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+    )
+    if close_stderr:
+        proc.stderr.close()
+        proc.stdin.write(json.dumps(payload).encode())
+        proc.stdin.close()
+        return proc.wait(timeout=120), b""
+    _stdout, stderr = proc.communicate(json.dumps(payload).encode(), timeout=120)
+    return proc.returncode, stderr
 
 
 def run_plugin(stub, args=None, connection=None):

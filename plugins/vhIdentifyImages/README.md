@@ -15,6 +15,7 @@ processed 120, updated 95, unchanged 20, no result 4, failed 1, performers creat
 - **updated**: at least one field changed (with Dry run on: would change).
 - **unchanged**: the scraper returned a result, but no field needed changing. No update is sent.
 - **no result**: the scraper returned nothing for the image. The image is skipped.
+- **not processed** (only when a run stops early): images the run never reached.
 - **failed**: the scrape or the update gave an error. The error is logged with the image ID and path, and the run carries on with the next image.
 
 Each scrape starts the scraper's own process, so a first run over a large library can take hours.
@@ -132,3 +133,4 @@ The studio follows the single-value rule: `merge` sets it only when the image ha
 
 - Studio and parent images (logos) from the scrape are not set.
 - Stash-box sources are not supported (Stash's single-image scrape has no stash-box support).
+- On a Stash with authentication turned on, a long run can stop when the plugin's session expires (after 1 hour by default). The plugin then stops with one "401 Unauthorized" error, and the summary counts the remaining images as not processed. Run it again to continue; supporting an API key is out of scope for now.

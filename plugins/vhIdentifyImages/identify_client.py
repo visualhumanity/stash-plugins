@@ -1,6 +1,7 @@
 """Minimal Stash GraphQL client over the stdlib, using the connection Stash passes on stdin."""
 
 import json
+import urllib.error
 import urllib.request
 
 PAGE_SIZE = 500
@@ -106,6 +107,32 @@ mutation ImageUpdate($input: BulkImageUpdateInput!) {
 }"""
 
 
+class Unauthorized(Exception):
+    """Stash answered 401. Not a RuntimeError, so per-image error handling never swallows it."""
+
+    def __init__(self):
+        super().__init__(
+            "Stash returned 401 Unauthorized; the plugin's session expired or authentication failed. Stopping."
+        )
+
+
+def _http_error(exc):
+    """RuntimeError for a non-200 answer, with the GraphQL error messages when the body has them."""
+    try:
+        body = exc.read().decode("utf-8", errors="replace")
+    except Exception:
+        body = ""
+    try:
+        errors = json.loads(body).get("errors") or []
+        messages = [e.get("message", "unknown error") for e in errors]
+    except (ValueError, AttributeError):
+        messages = []
+    if messages:
+        return RuntimeError("; ".join(messages))
+    snippet = body if len(body) <= 300 else body[:300] + f"... ({len(body)} chars)"
+    return RuntimeError(f"HTTP {exc.code}: {snippet}".rstrip(": "))
+
+
 def prefix_regex(prefixes):
     """Regex matching paths that start with any of the prefixes, taken literally.
 
@@ -138,8 +165,13 @@ class StashClient:
         )
         if self.cookie:
             request.add_header("Cookie", self.cookie)
-        with urllib.request.urlopen(request, timeout=300) as response:
-            payload = json.load(response)
+        try:
+            with urllib.request.urlopen(request, timeout=300) as response:
+                payload = json.load(response)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 401:
+                raise Unauthorized() from None
+            raise _http_error(exc) from None
         if payload.get("errors"):
             raise RuntimeError("; ".join(e.get("message", "unknown error") for e in payload["errors"]))
         return payload["data"]

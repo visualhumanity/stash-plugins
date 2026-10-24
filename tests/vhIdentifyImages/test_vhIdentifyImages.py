@@ -8,7 +8,7 @@ and the log that comes back.
 import os
 import unittest
 
-from .stash_stub import PLUGIN_DIR, FakeStash, hook_args, image, image_scraper, run_plugin
+from .stash_stub import PLUGIN_DIR, FakeStash, hook_args, image, image_scraper, operation_of, run_plugin
 
 try:
     import yaml
@@ -1276,6 +1276,80 @@ class ConcurrentEditTests(unittest.TestCase):
             log = run_plugin(stub)
         self.assertEqual(stub.mutations(), [])
         self.assertIn("unchanged 1", joined(log))
+
+
+UNAUTHORIZED = (401, "Unauthorized")
+
+
+def unauthorized_from(operation, image_id):
+    """Answer 401 from the given operation on the given image onward, like an expired session."""
+    state = {"expired": False}
+
+    def intercept(stub, body):
+        variables = body.get("variables") or {}
+        target = (variables.get("input") or {}).get("image_id") or variables.get("id")
+        if operation_of(body) == operation and str(target) == image_id:
+            state["expired"] = True
+        return UNAUTHORIZED if state["expired"] else None
+
+    return intercept
+
+
+class HttpErrorTests(unittest.TestCase):
+    IMAGES = [image(i, f"{SUB}{i}.jpg") for i in range(1, 5)]
+    SCRAPES = {str(i): [{"title": "Example Image"}] for i in range(1, 5)}
+
+    def test_401_stops_the_run_and_counts_the_rest_as_not_processed(self):
+        with FakeStash(self.IMAGES, settings={}, scrapes=self.SCRAPES, intercept=unauthorized_from("ScrapeSingleImage", "3")) as stub:
+            log = run_plugin(stub)
+        errors = messages(log, "e")
+        self.assertEqual(len(errors), 1)
+        self.assertIn("401 Unauthorized", errors[0])
+        self.assertIn("Stopping", errors[0])
+        self.assertEqual([u["id"] for u in stub.updates()], ["1", "2"])
+        # nothing is tried after the 401
+        self.assertEqual(stub.scraped_ids(), ["1", "2", "3"])
+        self.assertIn("processed 2, updated 2, unchanged 0, no result 0, failed 0", joined(log))
+        self.assertIn("not processed 2", joined(log))
+
+    def test_401_on_settings_stops_with_one_error(self):
+        with FakeStash(self.IMAGES, settings={}, intercept=lambda stub, body: UNAUTHORIZED) as stub:
+            log = run_plugin(stub)
+        self.assertEqual(len(stub.requests), 1)
+        self.assertEqual(len(messages(log, "e")), 1)
+        self.assertIn("401 Unauthorized", joined(log, "e"))
+
+    def test_401_in_the_scan_hook_is_one_error(self):
+        intercept = unauthorized_from("ScrapeSingleImage", "1")
+        with FakeStash(self.IMAGES, settings={"scrapeOnScan": True}, scrapes=self.SCRAPES, intercept=intercept) as stub:
+            log = run_plugin(stub, args=hook_args("1"))
+        self.assertEqual(len(messages(log, "e")), 1)
+        self.assertIn("401 Unauthorized", joined(log, "e"))
+        self.assertEqual(stub.mutations(), [])
+
+    def test_422_graphql_errors_are_reported_with_their_messages(self):
+        def intercept(stub, body):
+            if operation_of(body) == "FindImage" and body["variables"]["id"] == "2":
+                return 422, {"errors": [{"message": "Cannot query field \"example\" on type \"Image\""}]}
+            return None
+
+        with FakeStash(self.IMAGES[:3], settings={}, scrapes=self.SCRAPES, intercept=intercept) as stub:
+            log = run_plugin(stub)
+        self.assertIn('Cannot query field "example" on type "Image"', joined(log, "e"))
+        self.assertIn("processed 3, updated 2, unchanged 0, no result 0, failed 1", joined(log))
+
+    def test_other_http_errors_report_status_and_body(self):
+        def intercept(stub, body):
+            if operation_of(body) == "FindImage":
+                return 500, "internal example failure " + "x" * 5000
+            return None
+
+        with FakeStash(self.IMAGES[:1], settings={}, scrapes=self.SCRAPES, intercept=intercept) as stub:
+            log = run_plugin(stub)
+        error = joined(log, "e")
+        self.assertIn("HTTP 500", error)
+        self.assertIn("internal example failure", error)
+        self.assertLess(len(error), 2000)
 
 
 class DryRunTests(unittest.TestCase):
