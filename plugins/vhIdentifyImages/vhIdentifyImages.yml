@@ -1,0 +1,99 @@
+name: VH - Identify Images
+description: Identify for images. Scrapes images under chosen folders with an image scraper and applies the results using Identify's ignore, merge and overwrite rules.
+version: 1.0.0
+ui:
+  javascript:
+    - vhIdentifyImages.js
+  css:
+    - vhIdentifyImages.css
+exec:
+  - python
+  - "{pluginDir}/vhIdentifyImages.py"
+interface: raw
+hooks:
+  - name: Scrape new images
+    description: When Scrape on scan is on, scrapes each new image found by a scan and applies the results like the Identify images task.
+    triggeredBy:
+      - Image.Create.Post
+tasks:
+  - name: Identify images
+    description: Scrapes every image under the configured folders with the configured scraper and applies the results using the field options. Turn on Dry run to see the changes without writing them.
+    defaultArgs:
+      mode: identify
+settings:
+  scraperId:
+    displayName: Scraper ID
+    description: "ID of the image scraper to run on each image (one listed in the image Scrape menu). Default: none; the task and Scrape on scan refuse to run until it is set."
+    type: STRING
+  folderPrefixes:
+    displayName: Folder prefixes
+    description: "Only images whose file path starts with one of these are processed. Separate several with |, for example /data/example/reddit/|/data/example/twitter/. Default: all images."
+    type: STRING
+  fieldTitle:
+    displayName: "Field option: Title"
+    description: "ignore, merge or overwrite. Default: merge (set only when the image has no title)."
+    type: STRING
+  fieldCode:
+    displayName: "Field option: Code"
+    description: "ignore, merge or overwrite. Default: merge (set only when the image has no code)."
+    type: STRING
+  fieldDetails:
+    displayName: "Field option: Details"
+    description: "ignore, merge or overwrite. Default: merge (set only when the image has no details)."
+    type: STRING
+  fieldDate:
+    displayName: "Field option: Date"
+    description: "ignore, merge or overwrite. Default: merge (set only when the image has no date)."
+    type: STRING
+  fieldUrls:
+    displayName: "Field option: URLs"
+    description: "ignore, merge or overwrite. Default: merge (add scraped URLs that are not already on the image)."
+    type: STRING
+  fieldStudio:
+    displayName: "Field option: Studio"
+    description: "ignore, merge or overwrite. Default: merge (set only when the image has no studio)."
+    type: STRING
+  fieldPerformers:
+    displayName: "Field option: Performers"
+    description: "ignore, merge or overwrite. Default: merge (add matched performers to the existing ones)."
+    type: STRING
+  fieldTags:
+    displayName: "Field option: Tags"
+    description: "ignore, merge or overwrite. Default: merge (add matched tags to the existing ones)."
+    type: STRING
+  createMissingStudios:
+    displayName: Create missing studios
+    description: "Create a scraped studio that does not exist in Stash yet (with its scraped name, URLs and parent, creating a missing parent first), then link it. As in Identify, an existing parent gets the scraped parent's fields written to it. Default: off (the studio is dropped)."
+    type: BOOLEAN
+  createMissingPerformers:
+    displayName: Create missing performers
+    description: "Create scraped performers that do not exist in Stash yet (with their scraped name, disambiguation and URLs), then link them. Default: off (they are dropped)."
+    type: BOOLEAN
+  createMissingTags:
+    displayName: Create missing tags
+    description: "Create scraped tags that do not exist in Stash yet, then link them. Default: off (they are dropped)."
+    type: BOOLEAN
+  skipSingleNamePerformers:
+    displayName: Skip single-name performers
+    description: "Do not create a performer whose name has no space and who has no disambiguation, as in Identify. Keep off for Reddit uploaders such as u_example_user. Default: off."
+    type: BOOLEAN
+  setOrganized:
+    displayName: Set organized
+    description: "Also mark an image organized when the plugin updates it. Images with no change are not touched. Default: off."
+    type: BOOLEAN
+  skipOrganized:
+    displayName: Skip organized images
+    description: "Leave organized images out of the run. They do not count toward the image limit. Default: off."
+    type: BOOLEAN
+  dryRun:
+    displayName: Dry run
+    description: "Log each image's changes (field, old value, new value) without writing anything. Default: off."
+    type: BOOLEAN
+  imageLimit:
+    displayName: Image limit
+    description: "Stop after this many images (for trial runs). Default: 0, no limit."
+    type: NUMBER
+  scrapeOnScan:
+    displayName: Scrape on scan
+    description: "Scrape each new image as a scan finds it, with the same settings as the task. Turn it on after the first bulk run. Default: off."
+    type: BOOLEAN
