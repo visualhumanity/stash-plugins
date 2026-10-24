@@ -63,10 +63,28 @@ class ScriptContractTests(unittest.TestCase):
         self.assertEqual(tuple(values), identify_settings.FIELD_STRATEGIES)
         self.assertIn(f'const DEFAULT_STRATEGY = "{identify_settings.DEFAULT_STRATEGY}";', self.js)
 
+    def test_patch_chain_is_called_with_props_and_ctx(self):
+        # Stash appends the next function in the PluginSettings patch chain as the last
+        # argument; calling the chain with props alone hands the next plugin's patch our
+        # function in place of its own and crashes the Settings page.
+        # calls of the chain, not the boundary's render() method definition
+        calls = re.findall(r"\b(render|original)\(([^()]*)\)(?!\s*\{)", self.js)
+        self.assertTrue(calls)
+        for name, args in calls:
+            top_level = re.sub(r"\{[^{}]*\}", "OBJECT", args)
+            self.assertEqual(len([a for a in top_level.split(",") if a.strip()]), 2, f"{name}({args})")
+        self.assertIn("render({ pluginID, settings }, undefined)", self.js)
+
+    def test_custom_layout_falls_back_to_plain_settings(self):
+        self.assertIn("class SettingsBoundary extends React.Component", self.js)
+        self.assertIn("static getDerivedStateFromError()", self.js)
+        self.assertIn("h(PluginSettings, { pluginID, settings, [PLAIN_FLAG]: true })", self.js)
+        self.assertIn("if (props.pluginID !== PLUGIN_ID || props[PLAIN_FLAG]) {", self.js)
+
     def test_patch_is_limited_to_this_plugin(self):
         self.assertIn('const PLUGIN_ID = "vhIdentifyImages";', self.js)
         self.assertIn('patch.instead("PluginSettings"', self.js)
-        self.assertIn("if (props.pluginID !== PLUGIN_ID) {\n      return original(props, ctx);", self.js)
+        self.assertIn("if (props.pluginID !== PLUGIN_ID || props[PLAIN_FLAG]) {\n      return original(props, ctx);", self.js)
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")

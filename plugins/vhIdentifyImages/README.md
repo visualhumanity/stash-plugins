@@ -66,7 +66,7 @@ After the section:
 | Image limit | number | 0 (no limit) | Stop after this many images, in path order. |
 | Scrape on scan | on/off | off | Scrape each new image as Stash's scan finds it. See scrape on scan. |
 
-The dropdowns save the same values the settings always held (`ignore`, `merge` or `overwrite` as text, Create missing as on/off), so values saved before the UI existed show as they are. A saved field value the plugin would refuse (for example `replace`) shows as "replace (invalid)" until you pick another. If the UI script does not load, Stash shows the plain settings in alphabetical order, with the field options named "Field option: Title" and so on; type `ignore`, `merge` or `overwrite` (any case) there.
+The dropdowns save the same values the settings always held (`ignore`, `merge` or `overwrite` as text, Create missing as on/off), so values saved before the UI existed show as they are. A saved field value the plugin would refuse (for example `replace`) shows as "replace (invalid)" until you pick another. If the custom layout fails to render (for example because another plugin changes the same settings block in an unexpected way), the plain settings are shown instead and a warning goes to the browser console. If the UI script does not load, Stash shows the plain settings in alphabetical order, with the field options named "Field option: Title" and so on; type `ignore`, `merge` or `overwrite` (any case) there.
 
 Every setting is checked before the run starts, including that the scraper ID names an installed image scraper. An invalid value (for example a field option of `replace`, or a limit that is not a whole number) stops the run before anything is written, with an error naming the setting.
 

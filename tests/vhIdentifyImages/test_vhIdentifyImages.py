@@ -1593,7 +1593,7 @@ class ManifestTests(unittest.TestCase):
 
     def test_identity_and_version(self):
         self.assertEqual(self.manifest["name"], "VH - Identify Images")
-        self.assertEqual(str(self.manifest["version"]), "1.0.0")
+        self.assertEqual(str(self.manifest["version"]), "1.0.1")
         self.assertEqual(self.manifest["interface"], "raw")
         self.assertEqual(self.manifest["exec"], ["python", "{pluginDir}/vhIdentifyImages.py"])
         self.assertTrue(self.manifest["description"])
