@@ -6,7 +6,6 @@ All values are checked before the plugin makes its first write.
 
 from dataclasses import dataclass
 
-DEFAULT_SCRAPER_ID = "GalleryDlReddit"
 PREFIX_SEPARATOR = "|"
 FIELD_STRATEGIES = ("ignore", "merge", "overwrite")
 DEFAULT_STRATEGY = "merge"
@@ -46,12 +45,13 @@ class Settings:
 
 def _scraper_id(raw, errors):
     value = raw.get("scraperId")
-    if value is None:
-        return DEFAULT_SCRAPER_ID
-    if not isinstance(value, str):
+    if value is not None and not isinstance(value, str):
         errors.append("scraperId must be text")
         return None
-    return value.strip() or DEFAULT_SCRAPER_ID
+    if not (value or "").strip():
+        errors.append("scraperId is not set; enter the ID of an image scraper")
+        return None
+    return value.strip()
 
 
 def _folder_prefixes(raw, errors):

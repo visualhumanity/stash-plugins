@@ -8,7 +8,17 @@ and the log that comes back.
 import os
 import unittest
 
-from .stash_stub import PLUGIN_DIR, FakeStash, hook_args, image, image_scraper, operation_of, run_plugin, run_plugin_raw
+from .stash_stub import (
+    PLUGIN_DIR,
+    UNSET,
+    FakeStash,
+    hook_args,
+    image,
+    image_scraper,
+    operation_of,
+    run_plugin,
+    run_plugin_raw,
+)
 
 try:
     import yaml
@@ -44,16 +54,33 @@ def joined(log, level=None):
 
 
 class ScrapeSourceTests(unittest.TestCase):
-    def test_default_scraper_id_is_gallerydlreddit(self):
-        with FakeStash([image(1, SUB + "a.jpg")], settings={}) as stub:
+    def test_unset_scraper_id_stops_the_task_before_any_call_but_settings(self):
+        for settings in (None, {"scraperId": UNSET}, {"scraperId": ""}, {"scraperId": "   "}):
+            with self.subTest(settings=settings):
+                with FakeStash([image(1, SUB + "a.jpg")], settings=settings, scrapes={"1": [{"title": "Example Image"}]}) as stub:
+                    log = run_plugin(stub)
+                self.assertIn("scraperId", joined(log, "e"))
+                self.assertEqual(stub.operations(), ["PluginConfiguration"])
+
+    def test_unset_scraper_id_stops_the_hook_when_scrape_on_scan_is_on(self):
+        with FakeStash([image(1, SUB + "a.jpg")], settings={"scraperId": UNSET, "scrapeOnScan": True}) as stub:
+            log = run_plugin(stub, args=hook_args("1"))
+        self.assertIn("scraperId", joined(log, "e"))
+        self.assertEqual(stub.operations(), ["PluginConfiguration"])
+
+    def test_unset_scraper_id_is_silent_in_the_hook_when_scrape_on_scan_is_off(self):
+        for settings in (None, {"scraperId": UNSET}):
+            with self.subTest(settings=settings):
+                with FakeStash([image(1, SUB + "a.jpg")], settings=settings) as stub:
+                    log = run_plugin(stub, args=hook_args("1"))
+                self.assertEqual(log, [])
+                self.assertEqual(stub.operations(), ["PluginConfiguration"])
+
+    def test_scraper_id_is_used_as_saved(self):
+        with FakeStash([image(1, SUB + "a.jpg")], settings={"scraperId": "GalleryDlReddit"}) as stub:
             run_plugin(stub)
         self.assertEqual(stub.scrape_sources(), [{"scraper_id": "GalleryDlReddit"}])
         self.assertEqual(stub.scraped_ids(), ["1"])
-
-    def test_default_applies_when_no_settings_were_ever_saved(self):
-        with FakeStash([image(1, SUB + "a.jpg")], settings=None) as stub:
-            run_plugin(stub)
-        self.assertEqual(stub.scrape_sources(), [{"scraper_id": "GalleryDlReddit"}])
 
     def test_configured_scraper_id_is_used(self):
         with FakeStash([image(1, SUB + "a.jpg")], settings={"scraperId": " ExampleScraper "}) as stub:
@@ -1566,7 +1593,7 @@ class ManifestTests(unittest.TestCase):
 
     def test_identity_and_version(self):
         self.assertEqual(self.manifest["name"], "VH - Identify Images")
-        self.assertEqual(str(self.manifest["version"]), "0.1.0")
+        self.assertEqual(str(self.manifest["version"]), "0.2.0")
         self.assertEqual(self.manifest["interface"], "raw")
         self.assertEqual(self.manifest["exec"], ["python", "{pluginDir}/vhIdentifyImages.py"])
         self.assertTrue(self.manifest["description"])
