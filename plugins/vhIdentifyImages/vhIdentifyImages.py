@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from identify_client import StashClient, Unauthorized, image_path  # noqa: E402
 from identify_rules import (  # noqa: E402
+    abbreviate,
     add_organized,
     build_update_input,
     fold_case,
@@ -33,13 +34,40 @@ TASK_MODE = "identify"
 HOOK_TYPE = "Image.Create.Post"
 
 
-class Log:
-    """Stash raw-plugin log protocol: level-prefixed lines on stderr."""
+# Stash reads plugin stderr with a line scanner that gives up on lines over 64 KiB
+MAX_LINE_BYTES = 60000
 
-    @staticmethod
-    def _emit(level, message):
-        sys.stderr.write(f"\x01{level}\x02{message}\n")
-        sys.stderr.flush()
+
+def _cap(line):
+    data = line.encode("utf-8")
+    if len(data) <= MAX_LINE_BYTES:
+        return line
+    kept = data[:MAX_LINE_BYTES].decode("utf-8", errors="ignore")
+    return f"{kept} ... (truncated, {len(data)} bytes)"
+
+
+class Log:
+    """Stash raw-plugin log protocol: level-prefixed lines on stderr.
+
+    Every line of a message gets its own prefix and is kept under Stash's
+    line limit. If Stash stops reading, logging goes quiet instead of
+    crashing the run.
+    """
+
+    closed = False
+
+    @classmethod
+    def _emit(cls, level, message):
+        if cls.closed:
+            return
+        try:
+            for line in str(message).splitlines() or [""]:
+                sys.stderr.write(f"\x01{level}\x02{_cap(line)}\n")
+            sys.stderr.flush()
+        except (BrokenPipeError, OSError, ValueError):
+            cls.closed = True
+            # keep the interpreter's own final flush from failing too
+            sys.stderr = open(os.devnull, "w")
 
     def info(self, message):
         self._emit("i", f"{PLUGIN_ID}: {message}")
@@ -243,7 +271,7 @@ def _apply_parent(stash, settings, parent, state, label, log):
         # the scraped name is this studio's alias; writing it as the name would clash
         update.pop("name")
     if update["id"] not in state.updated_parents:
-        fields = {k: v for k, v in update.items() if k != "id"}
+        fields = abbreviate({k: v for k, v in update.items() if k != "id"})
         shown = f"{update['id']} ({studio_name(parent)!r})"
         if not fields:
             pass

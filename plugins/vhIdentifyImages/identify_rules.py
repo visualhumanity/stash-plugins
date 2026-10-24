@@ -283,12 +283,26 @@ def build_update_input(image_id, changes, strategies):
     return update
 
 
+ABBREVIATE_AT = 200
+
+
+def abbreviate(value, limit=ABBREVIATE_AT):
+    """Shorten long text for the log: the first limit characters, then the full length."""
+    if isinstance(value, str) and len(value) > limit:
+        return f"{value[:limit]}... ({len(value)} chars)"
+    if isinstance(value, list):
+        return [abbreviate(v, limit) for v in value]
+    if isinstance(value, dict):
+        return {k: abbreviate(v, limit) for k, v in value.items()}
+    return value
+
+
 def _display(field, value):
     if field == "studio":
-        return repr(value["name"] if value else None)
+        return repr(abbreviate(value["name"]) if value else None)
     if field in RELATIONSHIP_FIELDS:
-        return repr([e["name"] if e.get("name") else f"id {e['id']}" for e in value])
-    return repr(value)
+        return repr([abbreviate(e["name"]) if e.get("name") else f"id {e['id']}" for e in value])
+    return repr(abbreviate(value))
 
 
 def describe_changes(changes):
@@ -300,7 +314,7 @@ def describe_changes(changes):
 def describe_report(report):
     parts = []
     for field, names in report.get("unmatched", {}).items():
-        parts.append(f"not linked, no existing match: {field}: {names!r}")
+        parts.append(f"not linked, no existing match: {field}: {abbreviate(names)!r}")
     if report.get("skipped_single_name"):
-        parts.append(f"skipped single-name performers: {report['skipped_single_name']!r}")
+        parts.append(f"skipped single-name performers: {abbreviate(report['skipped_single_name'])!r}")
     return "; ".join(parts)

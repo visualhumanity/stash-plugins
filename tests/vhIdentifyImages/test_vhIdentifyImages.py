@@ -8,7 +8,7 @@ and the log that comes back.
 import os
 import unittest
 
-from .stash_stub import PLUGIN_DIR, FakeStash, hook_args, image, image_scraper, operation_of, run_plugin
+from .stash_stub import PLUGIN_DIR, FakeStash, hook_args, image, image_scraper, operation_of, run_plugin, run_plugin_raw
 
 try:
     import yaml
@@ -1350,6 +1350,55 @@ class HttpErrorTests(unittest.TestCase):
         self.assertIn("HTTP 500", error)
         self.assertIn("internal example failure", error)
         self.assertLess(len(error), 2000)
+
+
+class LogSafetyTests(unittest.TestCase):
+    """Stash reads plugin stderr line by line and gives up on a line over 64 KiB."""
+
+    def run_raw(self, scrapes, settings=None, scrape_errors=()):
+        images = [image(i, f"{SUB}{i}.jpg") for i in range(1, len(scrapes) + 1)]
+        with FakeStash(images, settings=settings or {}, scrapes=scrapes, scrape_errors=scrape_errors) as stub:
+            code, stderr = run_plugin_raw(stub)
+        return stub, code, stderr
+
+    def test_every_line_is_prefixed_even_for_multi_line_messages(self):
+        stub, code, stderr = self.run_raw({"2": [{"title": "Example Image"}], "1": []}, scrape_errors={"1": "first line\nsecond line\nthird line"})
+        self.assertEqual(code, 0)
+        lines = stderr.decode().splitlines()
+        self.assertTrue(lines)
+        for line in lines:
+            self.assertRegex(line, r"^\x01[a-z]\x02")
+        self.assertTrue(any("second line" in line for line in lines))
+
+    def test_huge_values_never_produce_a_line_over_the_limit(self):
+        huge = "😀" * 40000  # 160 KB in UTF-8
+        stub, code, stderr = self.run_raw(
+            {"1": [{"details": huge}], "2": [{"title": "Example Image"}], "3": []},
+            scrape_errors={"3": "bad value: " + huge},
+        )
+        self.assertEqual(code, 0)
+        for line in stderr.split(b"\n"):
+            self.assertLessEqual(len(line), 64 * 1024)
+        text = stderr.decode()
+        self.assertIn("truncated", text)
+        self.assertIn("processed 3, updated 2", text)
+        self.assertEqual(stub.updates()[0]["details"], huge)
+
+    def test_long_values_are_abbreviated_in_change_logs(self):
+        long_details = "Example details. " * 100
+        with FakeStash([image(1, SUB + "1.jpg")], settings={"dryRun": True}, scrapes={"1": [{"details": long_details}]}) as stub:
+            log = run_plugin(stub)
+        text = joined(log)
+        self.assertIn(f"... ({len(long_details)} chars)", text)
+        self.assertNotIn(long_details, text)
+
+    def test_closed_log_pipe_does_not_stop_the_run(self):
+        images = [image(1, SUB + "1.jpg"), image(2, SUB + "2.jpg")]
+        scrapes = {"1": [{"title": "Example Image"}], "2": [{"title": "Example Image"}]}
+        with FakeStash(images, settings={}, scrapes=scrapes) as stub:
+            code, _ = run_plugin_raw(stub, close_stderr=True)
+        self.assertEqual(code, 0)
+        self.assertEqual([u["id"] for u in stub.updates()], ["1", "2"])
 
 
 class DryRunTests(unittest.TestCase):
