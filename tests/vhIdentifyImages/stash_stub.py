@@ -98,6 +98,11 @@ def image_scraper(scraper_id, supported=("FRAGMENT",)):
 
 DEFAULT_SCRAPERS = (image_scraper("GalleryDlReddit"), image_scraper("ExampleScraper"))
 
+# The plugin has no default scraper. Unless a test says otherwise, saved settings
+# name this one; pass scraperId=UNSET to leave it out.
+TEST_SCRAPER_ID = "GalleryDlReddit"
+UNSET = object()
+
 
 _ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
 
@@ -165,6 +170,12 @@ class FakeStash:
         self.before = dict(before or {})
         # effective result of every image update: {"id", <input key>: resulting value}
         self.applied = []
+        if settings is not None:
+            settings = dict(settings)
+            if "scraperId" not in settings:
+                settings["scraperId"] = TEST_SCRAPER_ID
+            elif settings["scraperId"] is UNSET:
+                del settings["scraperId"]
         self.settings = settings
         # image id -> list of ScrapedImage dicts (missing means an empty list)
         self.scrapes = scrapes or {}

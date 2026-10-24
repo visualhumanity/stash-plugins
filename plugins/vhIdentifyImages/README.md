@@ -30,29 +30,43 @@ The plugin's own image updates fire Stash's `Image.Update.Post` hook, not `Image
 
 ## Settings
 
-Stash plugin settings have no stored defaults: an empty setting means the default below.
+Settings > Plugins > VH - Identify Images. The plugin's UI script lays the settings out like Identify's options: the scraper and folders first, then a **Field options** section, then the run options. Stash plugin settings have no stored defaults: an empty setting means the default below.
+
+**Scraper ID has no default.** Until it is set, the task stops before touching anything with an error naming `scraperId`, and so does Scrape on scan when it is on. For Reddit images downloaded with gallery-dl, use `GalleryDlReddit`.
 
 | Setting | Type | Default | Meaning |
 |---|---|---|---|
-| Scraper ID | text | `GalleryDlReddit` | ID of the image scraper to run. It must be installed and able to scrape an existing image (an `imageByFragment` scraper, the kind the image Scrape menu uses); the run stops before touching any image if it is not. |
+| Scraper ID | text | none (required) | ID of the image scraper to run. It must be installed and able to scrape an existing image (an `imageByFragment` scraper, the kind the image Scrape menu uses); the run stops before touching any image if it is not. |
 | Folder prefixes | text | all images | Only images whose file path starts with one of these are processed. Images with no file are only processed when this is empty. Separate several with `\|`, for example `/data/example/reddit/\|/data/example/twitter/`. Spaces around each entry are trimmed. The match is a plain "starts with", so end a folder with `/` to avoid also matching `/data/example/reddit2/`. |
-| Title option | text | `merge` | `ignore`, `merge` or `overwrite` (any case). See field options. |
-| Code option | text | `merge` | As above, for the studio code. |
-| Details option | text | `merge` | As above, for details. |
-| Date option | text | `merge` | As above, for the date. |
-| URLs option | text | `merge` | As above, for URLs. See list fields. |
-| Performers option | text | `merge` | As above, for performers. See list fields. |
-| Tags option | text | `merge` | As above, for tags. See list fields. |
-| Studio option | text | `merge` | As above, for the studio. See studio. |
-| Create missing performers | on/off | off | Create scraped performers that are not in Stash yet, then link them. See creating missing performers and tags. |
-| Create missing tags | on/off | off | Create scraped tags that are not in Stash yet, then link them. |
-| Create missing studios | on/off | off | Create a scraped studio that is not in Stash yet (and its parent), then link it. See studio. |
+
+**Field options** section. Each field has an Ignore / Merge / Overwrite dropdown; an unset field shows (and uses) Merge. Studio, Performers and Tags each have a **Create missing** toggle in its own row below the dropdown.
+
+| Row | Setting key | Type | Default | Meaning |
+|---|---|---|---|---|
+| Title | `fieldTitle` | text | `merge` | See field options. |
+| Code | `fieldCode` | text | `merge` | As above, for the studio code. |
+| Details | `fieldDetails` | text | `merge` | As above, for details. |
+| Date | `fieldDate` | text | `merge` | As above, for the date. |
+| URLs | `fieldUrls` | text | `merge` | See list fields. |
+| Studio | `fieldStudio` | text | `merge` | See studio. |
+| Create missing (Studio) | `createMissingStudios` | on/off | off | Create a scraped studio that is not in Stash yet (and its parent), then link it. See studio. |
+| Performers | `fieldPerformers` | text | `merge` | See list fields. |
+| Create missing (Performers) | `createMissingPerformers` | on/off | off | Create scraped performers that are not in Stash yet, then link them. See creating missing performers and tags. |
+| Tags | `fieldTags` | text | `merge` | See list fields. |
+| Create missing (Tags) | `createMissingTags` | on/off | off | Create scraped tags that are not in Stash yet, then link them. |
+
+After the section:
+
+| Setting | Type | Default | Meaning |
+|---|---|---|---|
 | Skip single-name performers | on/off | off | Do not create a performer whose name has no space and who has no disambiguation. |
 | Set organized | on/off | off | Also mark an image organized when it is updated. See organized. |
 | Skip organized images | on/off | off | Leave organized images out of the run, so reruns skip finished images. They do not count toward the image limit. |
-| Scrape on scan | on/off | off | Scrape each new image as Stash's scan finds it. See scrape on scan. |
 | Dry run | on/off | off | Compute and log every change without writing anything. |
 | Image limit | number | 0 (no limit) | Stop after this many images, in path order. |
+| Scrape on scan | on/off | off | Scrape each new image as Stash's scan finds it. See scrape on scan. |
+
+The dropdowns save the same values the settings always held (`ignore`, `merge` or `overwrite` as text, Create missing as on/off), so values saved before the UI existed show as they are. A saved field value the plugin would refuse (for example `replace`) shows as "replace (invalid)" until you pick another. If the UI script does not load, Stash shows the plain settings in alphabetical order, with the field options named "Field option: Title" and so on; type `ignore`, `merge` or `overwrite` (any case) there.
 
 Every setting is checked before the run starts, including that the scraper ID names an installed image scraper. An invalid value (for example a field option of `replace`, or a limit that is not a whole number) stops the run before anything is written, with an error naming the setting.
 
@@ -121,8 +135,7 @@ The studio follows the single-value rule: `merge` sets it only when the image ha
 | Identify | This plugin |
 |---|---|
 | Sources list | Scraper ID (one source for now; the task already goes through an ordered list and uses the first result) |
-| Field options: Title, Code, Details, Date, URLs, Studio, Performers, Tags | Title, Code, Details, Date, URLs, Studio, Performers, Tags options |
-| Create missing (performers, tags, studio) | Create missing performers, Create missing tags, Create missing studios |
+| Field options: Title, Code, Details, Date, URLs, Studio, Performers, Tags, with Create missing below Studio, Performers and Tags | Field options section, same layout |
 | Skip single-name performers | Same (the "skipped" tag option is not supported) |
 | Set organized | Same, but only for images that change (see organized) |
 | Default strategy for an unset field: merge | Same |
