@@ -6,14 +6,9 @@ Plugins for [Stash](https://github.com/stashapp/stash), published as a self-host
 
 ## Plugins
 
-| Directory | Name | Type | Description |
-|-----------|------|------|-------------|
-| `flexibleDateInput` | Flexible Date Input | UI | Patches Stash's date input field with an "Attempt to fix?" helper that normalises a wide range of date formats (YYYYMMDD, MM-DD-YYYY, DD/MM/YYYY, epoch, etc.) into the required YYYY-MM-DD format |
-| `autoSetPerformerGender` | Auto-set Performer Gender | Backend/hook | Sets a newly created performer's gender to a configured default if it doesn't already have one; fires on `Performer.Create.Post`, never overwrites an existing gender |
-| `vhClearFields` | VH - Clear Fields | UI + Backend/task | Adds a "Clear fields..." button to the scene list (selected scenes) and scene page; a two-step dialog picks fields and confirms, then a background task clears the chosen fields (title, URLs, date, director, performers, studio, details, stash IDs, studio code) on every selected scene |
-| `vhIdentifyImages` | VH - Identify Images | UI + Backend/task + hook | Identify for images: a task scrapes every image under configured folder prefixes with a configured image scraper (no default; required) and applies title, code, details, date, URLs, studio (with parent), performers and tags with Identify's per-field ignore/merge/overwrite rules (optionally creating missing performers, tags and studios); set and skip organized; dry run and image limit for trial runs; optional scrape-on-scan hook on `Image.Create.Post` (default off); stdlib GraphQL client split into settings, field-rule and client modules; a UI script patches `PluginSettings` for this plugin only to show an Identify-style Field options section with Ignore/Merge/Overwrite dropdowns and Create missing toggles |
-| `vhLinkTagsToPage` | VH - Link Tags To Page | UI | Tag links open the tag's detail page on the tab matching where the tag was clicked (scene to `/tags/<id>/scenes`, performer to `/tags/<id>/performers`, and so on) instead of a resource list with a tag filter; patches `TagLink` and replaces only its URL |
-| `vhPlayerAspectRatioFix` | VH - Player Aspect Ratio Fix | UI | Adds an aspect ratio button to the scene player's control bar (16:9, 4:3, 1:1, Original) that stretches the playing picture by driving the Filters tab's Aspect Ratio and Scale sliders; optional Shrink to fit setting; resets on every scene change, changes nothing stored |
+The root [`README.md`](README.md) is the index of the plugins in this repo: name, a short description and version. Each plugin's own `README.md` holds the detail (settings, behaviour, known limitations). Read those rather than expecting a list here. See `docs/adr/0001-root-readme-role.md`.
+
+Keep the README table current: a PR that adds, removes or renames a plugin, changes what it does, or bumps its version updates the table in the same PR.
 
 ## Directory structure
 
@@ -200,7 +195,7 @@ python3 scripts/check_plugin_versions.py origin/<target>   # origin/develop or o
   - **minor:** new feature, setting or UI element that is backward compatible.
   - **major:** breaking change: a removed or renamed setting, a changed hook or task contract, or anything the user must act on.
 - **One bump per PR**, not per commit. The check compares against the target tip at the time it runs, and nothing re-runs it when the target moves. If another PR touching the same plugin merged after your last run, re-run the check (or push) before merging; if it now fails, rebase and bump again.
-- **New plugins** start at `0.1.0` and stay `0.Y.Z` on `develop`. A plugin new to `main` must be exactly `1.0.0`: in the `develop` to `main` release PR, commit the promotion to `1.0.0` on `develop`.
+- **New plugins** start at `0.1.0` and stay `0.Y.Z` on `develop`. A plugin new to `main` must be exactly `1.0.0`: in the `develop` to `main` release PR, commit the bump to `1.0.0` on `develop`.
 - **Deleted plugins** pass. A renamed folder counts as a new plugin.
 - The checker reads `version:` the way `build_site.sh` does (first `version:` line), so don't put a comment after the value.
 
@@ -211,7 +206,8 @@ UI plugin:
 1. Create `plugins/<Name>/` with a `<Name>.yml`, a `<Name>.js` and a `README.md` (behavior, known limitations).
 2. Write the JS as plain ES in an IIFE (see JavaScript conventions); there is no build step.
 3. Follow the YAML conventions above (name, description, version, and ui sections are all required). Start at `version: 0.1.0` (see Versioning).
-4. Merge to `develop` to publish a pre-release build, then release to `main` with the version promoted to `1.0.0`.
+4. Add a row for it to the root `README.md` plugins table.
+5. Merge to `develop` to publish a pre-release build, then release to `main` with the version bumped to `1.0.0`.
 
 Backend/hook plugin:
 
@@ -220,7 +216,8 @@ Backend/hook plugin:
 2. Follow the YAML and Python conventions above — `exec`/`interface: raw`, a `hooks:` block with
    the relevant `triggeredBy` entries, and `# requires: PythonDepManager` if the script imports
    anything beyond the stdlib. Start at `version: 0.1.0` (see Versioning).
-3. Merge to `develop` to publish a pre-release build, then release to `main` with the version promoted to `1.0.0`.
+3. Add a row for it to the root `README.md` plugins table.
+4. Merge to `develop` to publish a pre-release build, then release to `main` with the version bumped to `1.0.0`.
 
 ## Dependency Management
 
