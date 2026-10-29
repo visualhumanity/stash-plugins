@@ -6,7 +6,9 @@ Plugins for [Stash](https://github.com/stashapp/stash), published as a self-host
 
 ## Plugins
 
-The root [`README.md`](README.md) is the index of the plugins in this repo: name, a short description and version. Each plugin's own `README.md` holds the detail (settings, behaviour, known limitations). Read those rather than expecting a list here. See `docs/adr/0001-root-readme-role.md`.
+The root [`README.md`](README.md) is the index of the plugins in this repo: name, a short description and version. Each plugin's own `README.md` holds the detail (settings, behavior, known limitations). Read those rather than expecting a list here. See `docs/adr/0001-root-readme-role.md`.
+
+Every plugin folder has a `README.md` following the shared structure in `docs/adr/0002-plugin-readme-structure.md`.
 
 Keep the README table current: a PR that adds, removes or renames a plugin, changes what it does, or bumps its version updates the table in the same PR.
 
