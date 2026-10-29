@@ -22,7 +22,7 @@ plugins/
     ├── <PluginName>.yml    # plugin manifest
     ├── <PluginName>.js     # plugin script (see JavaScript conventions)
     ├── <PluginName>.css    # optional stylesheet
-    └── README.md           # behavior, known limitations (flexibleDateInput predates this)
+    └── README.md           # behavior, known limitations
 ```
 
 Backend/hook plugins (Python, run by Stash's plugin subprocess protocol):
