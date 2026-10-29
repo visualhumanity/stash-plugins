@@ -37,7 +37,7 @@ A tag shown anywhere else keeps Stash's default link.
 
 Stash draws every tag chip with its `TagLink` component, which is told where the chip is shown.
 The plugin patches `TagLink` with `patch.after` and swaps only the URL on the element Stash
-returns. A chip shown somewhere the plugin does not recognize keeps Stash's default link.
+returns.
 
 There are no automated tests. Check by hand on a test Stash instance: for each place in the Tabs
 table, hover a tag chip, check the link is `/tags/<id>/<tab>`, and click it.

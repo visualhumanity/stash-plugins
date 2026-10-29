@@ -11,8 +11,6 @@ when no correct match exists anywhere.
   (all) and Studio code. Only the ticked fields are changed.
 - Cover, tags, groups, markers and generated files (sprites, previews) are never touched.
 - A confirmation dialog lists the chosen fields before anything is cleared. There is no undo.
-- From the scene list, the work runs as a background job.
-- Settings choose which fields start ticked in the dialog.
 
 ## Use
 

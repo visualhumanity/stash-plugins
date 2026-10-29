@@ -21,7 +21,7 @@ toggles, no conditional logic.
 
 | Setting | Default | Description |
 |---|---|---|
-| Default gender | none (plugin does nothing) | One of `MALE`, `FEMALE`, `TRANSGENDER_MALE`, `TRANSGENDER_FEMALE`, `INTERSEX`, `NON_BINARY` (case-insensitive). Leave blank to disable the plugin. |
+| Default gender | none (plugin does nothing) | One of `MALE`, `FEMALE`, `TRANSGENDER_MALE`, `TRANSGENDER_FEMALE`, `INTERSEX`, `NON_BINARY` (case-insensitive). |
 
 ## Known limitations
 
