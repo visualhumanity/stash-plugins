@@ -12,7 +12,7 @@ Does for images what Stash's Identify task does for scenes. A task runs an image
 - Optional **Scrape on scan** hook for new images.
 - Settings > Plugins shows the settings laid out like Identify's options.
 
-## Running it
+## Use
 
 **Take a database backup before the first full run.** An overwrite option applied to thousands of images cannot be undone from the plugin. Try the settings first with **Dry run** on and a small **Image limit**.
 
@@ -110,7 +110,7 @@ The studio follows the single-value rule: `merge` sets it only when the image ha
 
 ## Configuration
 
-Settings > Plugins > VH - Identify Images. The scraper and folders come first, then the **Field options** section, then the run options. Stash plugin settings have no stored defaults: an empty setting means the default below, and an unset field option shows (and uses) Merge.
+Settings > Plugins > VH - Identify Images lists the scraper and folders first, then the **Field options** section, then the run options. Stash plugin settings have no stored defaults: an empty setting means the default below, and an unset field option shows (and uses) Merge.
 
 | Setting | Default | Description |
 |---|---|---|

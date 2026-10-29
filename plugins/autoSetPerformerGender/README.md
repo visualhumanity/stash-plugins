@@ -16,7 +16,7 @@ Settings > Plugins > Auto-set Performer Gender has one setting.
 
 | Setting | Default | Description |
 |---|---|---|
-| Default gender | none (plugin does nothing) | One of `MALE`, `FEMALE`, `TRANSGENDER_MALE`, `TRANSGENDER_FEMALE`, `INTERSEX`, `NON_BINARY` (case-insensitive). |
+| Default gender | none (performer skipped, error logged) | One of `MALE`, `FEMALE`, `TRANSGENDER_MALE`, `TRANSGENDER_FEMALE`, `INTERSEX`, `NON_BINARY` (case-insensitive). |
 
 ## Known limitations
 
@@ -25,4 +25,4 @@ Settings > Plugins > Auto-set Performer Gender has one setting.
 
 ## Development
 
-`autoSetPerformerGender.py` handles the `Performer.Create.Post` hook with `stashapi`. There are no automated tests.
+`autoSetPerformerGender.py` handles the `Performer.Create.Post` hook with `stashapi`. There are no automated tests. Check by hand on a test Stash instance: create a performer with no gender and one with a gender, and check that only the first gets the default.

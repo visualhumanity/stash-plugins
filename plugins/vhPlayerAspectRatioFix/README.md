@@ -19,14 +19,14 @@ The menu marks the active choice.
 
 ## How presets work
 
-The plugin drives Stash's own **Aspect Ratio** and **Scale** sliders on the scene page's **Filters** tab. You can see the values it set there and fine-tune them by hand.
+The plugin drives Stash's own **Aspect** and **Scale** sliders on the scene page's **Filters** tab. You can see the values it set there and fine-tune them by hand.
 
 - Ratios are absolute. Each preset is calculated from the video's natural size as the browser reports it, so picking 4:3 and then 16:9 gives 16:9, not two stretches stacked.
 - The browser already applies a file's pixel aspect ratio. An anamorphic 720x480 DVD rip with 8:9 pixels already displays at 4:3, so the 4:3 preset leaves it unchanged.
 - The sliders take whole numbers only, so results are within about 0.4% of the target ratio.
 - Presets only change the Scale slider when Shrink to fit is on, so a Scale you set by hand is kept. **Original** resets both sliders.
 - Moving to another scene resets both sliders to their defaults, so a preset never carries over. This also resets values you set by hand on the Filters tab.
-- If you move the Aspect Ratio or Scale slider by hand, the button and menu stop showing a preset as active.
+- If you move the Aspect or Scale slider by hand, the button and menu stop showing a preset as active.
 
 With Shrink to fit off, a preset that makes the picture taller relative to its width is cut off at the top and bottom in a landscape player, which includes most fullscreen use. For example, 1:1 on a 4:3 video can look the same size as 4:3 with the top and bottom of the picture missing. Turn on Shrink to fit to see the whole picture.
 
