@@ -4,8 +4,13 @@ Adds an aspect ratio button to the scene player's control bar. Pick a ratio and 
 picture is stretched to it, for videos that play at the wrong shape (for example a squeezed
 widescreen re-encode, or a 4:3 video stretched to 16:9).
 
-Only the picture on screen changes. Files, stored metadata and the scene itself are never
-modified, and nothing is saved.
+## Features
+
+- Aspect ratio button next to the player's fullscreen button, with **16:9**, **4:3**, **1:1** and
+  **Original** presets. Works in fullscreen.
+- Only the picture on screen changes. Files, stored metadata and the scene itself are never
+  modified, and nothing is saved.
+- Optional **Shrink to fit** keeps a stretched picture fully inside the player.
 
 ## Use
 
@@ -14,9 +19,9 @@ modified, and nothing is saved.
 3. Pick **16:9**, **4:3** or **1:1**. The button then shows the active ratio (for example `4:3`).
 4. Pick **Original** to go back to how the video looked when it loaded.
 
-The menu marks the active choice. It works in fullscreen.
+The menu marks the active choice.
 
-## How it works
+## How presets work
 
 The plugin drives Stash's own **Aspect Ratio** and **Scale** sliders on the scene page's
 **Filters** tab. You can see the values it set there and fine-tune them by hand.
@@ -33,25 +38,30 @@ The plugin drives Stash's own **Aspect Ratio** and **Scale** sliders on the scen
 - If you move the Aspect Ratio or Scale slider by hand, the button and menu stop showing a preset
   as active.
 
-## Settings
-
-Settings > Plugins has one toggle:
-
-- **Shrink to fit**: scales a stretched picture down so it stays fully inside the player. Stash
-  plugin settings have no default, so it is off until you turn it on. A change takes effect the
-  next time you pick a preset, without reloading. When it is on, the scale is recalculated when
-  the player is resized or enters or leaves fullscreen.
-
 With Shrink to fit off, a preset that makes the picture taller relative to its width is cut off
 at the top and bottom in a landscape player, which includes most fullscreen use. For example,
 1:1 on a 4:3 video can look the same size as 4:3 with the top and bottom of the picture missing.
 Turn on Shrink to fit to see the whole picture.
 
+## Configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| Shrink to fit | off | Scale a stretched picture down so it stays fully inside the player instead of being cropped at the edges. A change takes effect the next time you pick a preset, without reloading. When it is on, the scale is recalculated when the player is resized or enters or leaves fullscreen. |
+
 ## Known limitations
 
 - VR mode is not supported. The player draws to a canvas there, and the button gives wrong results.
-- The button hides with the rest of the player controls while the mouse is idle (video.js behaviour).
+- The button hides with the rest of the player controls while the mouse is idle (video.js behavior).
 - On some devices the video size is unknown until playback starts. A preset picked before that is
   applied as soon as the video loads.
 - Only tested in Chromium-based browsers.
 - No keyboard shortcut.
+
+## Development
+
+Tests: `python3 -m unittest discover -t . -s tests/vhPlayerAspectRatioFix` from the repo root.
+They load `vhPlayerAspectRatioFix.js` in Node (`node` must be on the `PATH`) and cover the slider
+values each preset writes, the menu presets, touch taps, and that the script and manifest agree on
+the plugin ID and setting key. The button and menu in a real player have no automated tests; check
+them by hand on a test Stash instance.
