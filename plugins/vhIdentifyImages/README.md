@@ -1,10 +1,20 @@
 # VH - Identify Images
 
-Does for images what Stash's Identify task does for scenes. A task goes through every image under the configured folders, runs an image scraper on each one (the same scrape as the image's Scrape menu), and applies the result using Identify's per-field ignore, merge and overwrite rules. An optional scan hook does the same for each new image as Stash's scan finds it.
+Does for images what Stash's Identify task does for scenes. A task runs an image scraper on every image under the configured folders (the same scrape as the image's Scrape menu) and applies the result using Identify's per-field ignore, merge and overwrite rules. An optional scan hook does the same for each new image as Stash's scan finds it.
 
-**Take a database backup before the first full run.** An overwrite option applied to thousands of images cannot be undone from the plugin. Try the settings first with **Dry run** on and a small **Image limit**.
+## Features
+
+- **Identify images** task: scrapes every image under the configured folders with one image scraper.
+- Per-field Ignore / Merge / Overwrite options for Title, Code, Details, Date, URLs, Studio, Performers and Tags, following Identify's rules.
+- Optionally creates missing studios (and their parents), performers and tags, as Identify does.
+- **Set organized** and **Skip organized images** options, so reruns can skip finished images.
+- **Dry run** logs every change (field, old value, new value) without writing anything.
+- **Scrape on scan** hook: scrapes each new image as a scan adds it, with the same settings as the task.
+- Settings > Plugins shows the settings laid out like Identify's options.
 
 ## Running it
+
+**Take a database backup before the first full run.** An overwrite option applied to thousands of images cannot be undone from the plugin. Try the settings first with **Dry run** on and a small **Image limit**.
 
 Settings > Tasks > Plugin Tasks > VH - Identify Images > **Identify images**. Progress shows in Stash's task list. Each changed image is logged (Settings > Logs) as field, old value and new value, and the run ends with a summary:
 
@@ -18,57 +28,15 @@ processed 120, updated 95, unchanged 20, no result 4, failed 1, performers creat
 - **not processed** (only when a run stops early): images the run never reached.
 - **failed**: the scrape or the update gave an error. The error is logged with the image ID and path, and the run carries on with the next image.
 
+Every setting is checked before the run starts, including that **Scraper ID** names an installed image scraper. An invalid value (for example a field option of `replace`, or a limit that is not a whole number) stops the run before anything is written, with an error naming the setting.
+
 Each scrape starts the scraper's own process, so a first run over a large library can take hours.
 
 ## Scrape on scan
 
 With **Scrape on scan** on, each new image that a scan adds is scraped and applied right away, exactly as the task would handle it: same scraper, folder prefixes, skip organized, dry run, field options and create options. An image outside the folder prefixes (or organized, with Skip organized images on) is left alone.
 
-It is off by default. Stash runs the plugin once for every new image a scan adds, and waits for it before going on, and each scrape also starts the scraper's own process. Turning it on before the first bulk run would make that first scan of a large library much slower. Run the **Identify images** task first, then turn Scrape on scan on so later downloads are handled as they are scanned. While it is off, each new image only costs the plugin reading its settings.
-
-The plugin's own image updates fire Stash's `Image.Update.Post` hook, not `Image.Create.Post`, so the plugin never triggers itself.
-
-## Settings
-
-Settings > Plugins > VH - Identify Images. The plugin's UI script lays the settings out like Identify's options: the scraper and folders first, then a **Field options** section, then the run options. Stash plugin settings have no stored defaults: an empty setting means the default below.
-
-**Scraper ID has no default.** Until it is set, the task stops before touching anything with an error naming `scraperId`, and so does Scrape on scan when it is on. For Reddit images downloaded with gallery-dl, use `GalleryDlReddit`.
-
-| Setting | Type | Default | Meaning |
-|---|---|---|---|
-| Scraper ID | text | none (required) | ID of the image scraper to run. It must be installed and able to scrape an existing image (an `imageByFragment` scraper, the kind the image Scrape menu uses); the run stops before touching any image if it is not. |
-| Folder prefixes | text | all images | Only images whose file path starts with one of these are processed. Images with no file are only processed when this is empty. Separate several with `\|`, for example `/data/example/reddit/\|/data/example/twitter/`. Spaces around each entry are trimmed. The match is a plain "starts with", so end a folder with `/` to avoid also matching `/data/example/reddit2/`. |
-
-**Field options** section. Each field has an Ignore / Merge / Overwrite dropdown; an unset field shows (and uses) Merge. Studio, Performers and Tags each have a **Create missing** toggle in its own row below the dropdown.
-
-| Row | Setting key | Type | Default | Meaning |
-|---|---|---|---|---|
-| Title | `fieldTitle` | text | `merge` | See field options. |
-| Code | `fieldCode` | text | `merge` | As above, for the studio code. |
-| Details | `fieldDetails` | text | `merge` | As above, for details. |
-| Date | `fieldDate` | text | `merge` | As above, for the date. |
-| URLs | `fieldUrls` | text | `merge` | See list fields. |
-| Studio | `fieldStudio` | text | `merge` | See studio. |
-| Create missing (Studio) | `createMissingStudios` | on/off | off | Create a scraped studio that is not in Stash yet (and its parent), then link it. See studio. |
-| Performers | `fieldPerformers` | text | `merge` | See list fields. |
-| Create missing (Performers) | `createMissingPerformers` | on/off | off | Create scraped performers that are not in Stash yet, then link them. See creating missing performers and tags. |
-| Tags | `fieldTags` | text | `merge` | See list fields. |
-| Create missing (Tags) | `createMissingTags` | on/off | off | Create scraped tags that are not in Stash yet, then link them. |
-
-After the section:
-
-| Setting | Type | Default | Meaning |
-|---|---|---|---|
-| Skip single-name performers | on/off | off | Do not create a performer whose name has no space and who has no disambiguation. |
-| Set organized | on/off | off | Also mark an image organized when it is updated. See organized. |
-| Skip organized images | on/off | off | Leave organized images out of the run, so reruns skip finished images. They do not count toward the image limit. |
-| Dry run | on/off | off | Compute and log every change without writing anything. |
-| Image limit | number | 0 (no limit) | Stop after this many images, in path order. |
-| Scrape on scan | on/off | off | Scrape each new image as Stash's scan finds it. See scrape on scan. |
-
-The dropdowns save the same values the settings always held (`ignore`, `merge` or `overwrite` as text, Create missing as on/off), so values saved before the UI existed show as they are. A saved field value the plugin would refuse (for example `replace`) shows as "replace (invalid)" until you pick another. If the custom layout fails to render (for example because another plugin changes the same settings block in an unexpected way), the plain settings are shown instead and a warning goes to the browser console. If the UI script does not load, Stash shows the plain settings in alphabetical order, with the field options named "Field option: Title" and so on; type `ignore`, `merge` or `overwrite` (any case) there.
-
-Every setting is checked before the run starts, including that the scraper ID names an installed image scraper. An invalid value (for example a field option of `replace`, or a limit that is not a whole number) stops the run before anything is written, with an error naming the setting.
+It is off by default. Stash runs the plugin once for every new image a scan adds and waits for it before going on, and each scrape also starts the scraper's own process. Turning it on before the first bulk run would make that first scan of a large library much slower. Run the **Identify images** task first, then turn Scrape on scan on so later downloads are handled as they are scanned. While it is off, each new image only costs the plugin reading its settings.
 
 ## Field options
 
@@ -80,9 +48,7 @@ These are Identify's rules for single-value fields:
 | `merge` | set to the scraped value | left alone |
 | `overwrite` | set to the scraped value | replaced by the scraped value |
 
-A field the scraper returns nothing for (missing or blank) is never touched, under any option. The image is updated only when at least one field changes.
-
-The image is read after the scrape, and read again after any performers, tags or studios are created, so "only when empty" and "nothing changed" are decided on its current values, not on what it held before a slow scrape.
+A field the scraper returns nothing for (missing or blank) is never touched, under any option. The image is updated only when at least one field changes, and "only when empty" and "nothing changed" are decided on the image's current values, not on what it held before a slow scrape.
 
 ### List fields: URLs, performers and tags
 
@@ -93,7 +59,7 @@ The image is read after the scrape, and read again after any performers, tags or
 | `overwrite` | the image's list is replaced by the scraped one |
 
 - An empty scraped list changes nothing, under any option.
-- Under `merge`, only the new items are sent, as an addition, so anything added to the image while the plugin works on it (by hand or by another plugin) is kept. `overwrite` replaces the whole list.
+- Under `merge`, anything added to the image while the plugin works on it (by hand or by another plugin) is kept.
 - URLs under `overwrite`: as in Identify, the list is replaced only when the scrape has a URL the image does not have yet.
 - Performers and tags that Stash matched to an existing performer or tag (the same matching the image Scrape menu shows) are linked. Existing performers and tags are never edited.
 - Unmatched items are created and linked when the matching create option is on (see below). Otherwise they are dropped and logged as "not linked, no existing match".
@@ -114,7 +80,7 @@ The image is read after the scrape, and read again after any performers, tags or
 The studio follows the single-value rule: `merge` sets it only when the image has no studio, `overwrite` replaces it, `ignore` leaves it. A scrape with no studio (or a blank name) changes nothing.
 
 - A scraped studio that Stash matched to an existing studio is linked. That studio is never edited, and neither is its parent.
-- With **Create missing studios** off, an unmatched studio is dropped and logged as "not linked, no existing match".
+- With **Create missing** off for Studio, an unmatched studio is dropped and logged as "not linked, no existing match".
 - With it on, an unmatched studio is created and linked, following Identify:
   - The new studio gets the scraped name, URLs, details and aliases, whichever the scraper returned.
   - Stash's image scrape matches the scraped studio to an existing one, but not its parent. So the plugin looks the parent up itself: by name, then by alias, ignoring ASCII case, once per run (in a dry run too). Its own parent (if the scraper gives one) is looked up the same way, but never created.
@@ -128,7 +94,7 @@ The studio follows the single-value rule: `merge` sets it only when the image ha
 - **Set organized**: an image the plugin updates also gets marked organized, in the same update. An image already organized is not changed again. Dry run logs it as `organized: False -> True`.
 - Difference from Identify: Identify's Set organized marks every scene it gets a scrape result for, even when nothing else changes. This plugin marks only images it actually updates; an image with no other change is not touched.
 - **Skip organized images**: organized images are filtered out when the run lists images, before any scrape, so the image limit counts only images that will be processed.
-- The image limit is for trial runs, not for working through a library in batches. Even with Set organized and Skip organized both on, an image that gets no scrape result, has nothing to change, or fails is never marked organized. It stays in the run, first in path order, and counts against the limit on every rerun, so repeated limited runs can keep processing the same images. Run without a limit to cover the whole library.
+- The image limit is for trial runs, not for working through a library in batches. Even with Set organized and Skip organized images both on, an image that gets no scrape result, has nothing to change, or fails is never marked organized. It stays in the run, first in path order, and counts against the limit on every rerun, so repeated limited runs can keep processing the same images. Run without a limit to cover the whole library.
 
 ## Mapping to Identify
 
@@ -137,13 +103,50 @@ The studio follows the single-value rule: `merge` sets it only when the image ha
 | Sources list | Scraper ID (one source for now; the task already goes through an ordered list and uses the first result) |
 | Field options: Title, Code, Details, Date, URLs, Studio, Performers, Tags, with Create missing below Studio, Performers and Tags | Field options section, same layout |
 | Skip single-name performers | Same (the "skipped" tag option is not supported) |
-| Set organized | Same, but only for images that change (see organized) |
+| Set organized | Same, but only for images that change (see Organized) |
 | Default strategy for an unset field: merge | Same |
 | Paths to process | Folder prefixes |
 | (no equivalent; Identify can run after a scan as a separate task) | Scrape on scan |
+
+## Configuration
+
+Settings > Plugins > VH - Identify Images. The scraper and folders come first, then a **Field options** section with an Ignore / Merge / Overwrite dropdown per field and a **Create missing** toggle below Studio, Performers and Tags, then the run options.
+
+| Setting | Default | Description |
+|---|---|---|
+| Scraper ID | none (required) | ID of the image scraper to run. It must be installed and able to scrape an existing image (an `imageByFragment` scraper, the kind the image Scrape menu uses). Until it is set, the task and Scrape on scan stop before touching anything, with an error naming `scraperId`. For Reddit images downloaded with gallery-dl, use `GalleryDlReddit`. |
+| Folder prefixes | all images | Only images whose file path starts with one of these are processed. Images with no file are only processed when this is empty. Separate several with `\|`, for example `/data/example/reddit/\|/data/example/twitter/`. Spaces around each entry are trimmed. The match is a plain "starts with", so end a folder with `/` to avoid also matching `/data/example/reddit2/`. |
+| Field options > Title | Merge | See Field options. |
+| Field options > Code | Merge | As above, for the studio code. |
+| Field options > Details | Merge | As above, for details. |
+| Field options > Date | Merge | As above, for the date. |
+| Field options > URLs | Merge | See List fields. |
+| Field options > Studio | Merge | See Studio. |
+| Field options > Studio > Create missing | off | Create a scraped studio that is not in Stash yet (and its parent), then link it. See Studio. |
+| Field options > Performers | Merge | See List fields. |
+| Field options > Performers > Create missing | off | Create scraped performers that are not in Stash yet, then link them. See Creating missing performers and tags. |
+| Field options > Tags | Merge | See List fields. |
+| Field options > Tags > Create missing | off | Create scraped tags that are not in Stash yet, then link them. |
+| Skip single-name performers | off | Do not create a performer whose name has no space and who has no disambiguation. |
+| Set organized | off | Also mark an image organized when it is updated. See Organized. |
+| Skip organized images | off | Leave organized images out of the run, so reruns skip finished images. They do not count toward the image limit. |
+| Dry run | off | Compute and log every change without writing anything. |
+| Image limit | 0 (no limit) | Stop after this many images, in path order. |
+| Scrape on scan | off | Scrape each new image as Stash's scan finds it. See Scrape on scan. |
+
+The dropdowns save `ignore`, `merge` or `overwrite` as text, and Create missing as on/off. A saved field value the plugin would refuse (for example `replace`) shows as "replace (invalid)" until you pick another.
 
 ## Known limitations
 
 - Studio and parent images (logos) from the scrape are not set.
 - Stash-box sources are not supported (Stash's single-image scrape has no stash-box support).
 - On a Stash with authentication turned on, a long run can stop when the plugin's session expires (after 1 hour by default). The plugin then stops with one "401 Unauthorized" error, and the summary counts the remaining images as not processed. Run it again to continue; supporting an API key is out of scope for now.
+- If the custom settings layout fails to render (for example because another plugin changes the same settings block in an unexpected way), the plain settings are shown instead and a warning goes to the browser console. If the UI script does not load at all, Stash shows the plain settings in alphabetical order, with the field options named "Field option: Title" and so on as text boxes; type `ignore`, `merge` or `overwrite` (any case) there.
+
+## Development
+
+- `vhIdentifyImages.py` is the entry point for both the task and the `Image.Create.Post` hook. `identify_settings.py` parses and validates the settings and holds every default (Stash stores none). `identify_rules.py` holds Identify's field rules as pure functions. `identify_client.py` is a stdlib GraphQL client using the connection Stash passes on stdin.
+- `vhIdentifyImages.js` patches `PluginSettings` to lay the settings out like Identify. Its setting keys must match the manifest and `identify_settings.py`; `tests/vhIdentifyImages/test_settings_ui_contract.py` checks that.
+- The plugin's own image updates fire `Image.Update.Post`, not `Image.Create.Post`, so it never triggers itself.
+- Under `merge`, list fields are sent as an addition (only the new items), not the whole list. The image is read again after the scrape and after any creates.
+- Tests: `python3 -m unittest discover -t . -s tests/ -p "test_*.py"` from the repo root. `tests/vhIdentifyImages/` runs the plugin script against a local stand-in for Stash's GraphQL endpoint.
