@@ -22,4 +22,4 @@ Adds an "Attempt to fix?" link under Stash's date fields when the entered date i
 
 ## Development
 
-`flexibleDateInput.js` is esbuild output. Its TypeScript source is not in this repo, so edit the built file by hand with care, or rewrite it as plain ES like the other UI plugins. It patches the `DateInput` component with `patch.after` and renders the helper after the original input. There are no tests.
+`flexibleDateInput.js` is esbuild output. Its TypeScript source is not in this repo, so edit the built file by hand with care, or rewrite it as plain ES like the other UI plugins. It patches the `DateInput` component with `patch.after` and renders the helper after the original input. There are no automated tests.

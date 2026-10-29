@@ -149,4 +149,4 @@ The dropdowns save `ignore`, `merge` or `overwrite` as text, and Create missing 
 - `vhIdentifyImages.js` patches `PluginSettings` to lay the settings out like Identify. Its setting keys must match the manifest and `identify_settings.py`; `tests/vhIdentifyImages/test_settings_ui_contract.py` checks that.
 - The plugin's own image updates fire `Image.Update.Post`, not `Image.Create.Post`, so it never triggers itself.
 - Under `merge`, list fields are sent as an addition (only the new items), not the whole list. The image is read again after the scrape and after any creates.
-- Tests: `python3 -m unittest discover -t . -s tests/ -p "test_*.py"` from the repo root. `tests/vhIdentifyImages/` runs the plugin script against a local stand-in for Stash's GraphQL endpoint.
+- Tests: `python3 -m unittest discover -t . -s tests/vhIdentifyImages` from the repo root. They run the plugin script against a local stand-in for Stash's GraphQL endpoint.
