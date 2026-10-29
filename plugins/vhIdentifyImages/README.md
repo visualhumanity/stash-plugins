@@ -4,12 +4,12 @@ Does for images what Stash's Identify task does for scenes. A task runs an image
 
 ## Features
 
-- **Identify images** task: scrapes every image under the configured folders with one image scraper.
+- **Identify images** task for a bulk run over the configured folders.
 - Per-field Ignore / Merge / Overwrite options for Title, Code, Details, Date, URLs, Studio, Performers and Tags, following Identify's rules.
 - Optionally creates missing studios (and their parents), performers and tags, as Identify does.
-- **Set organized** and **Skip organized images** options, so reruns can skip finished images.
-- **Dry run** logs every change (field, old value, new value) without writing anything.
-- **Scrape on scan** hook: scrapes each new image as a scan adds it, with the same settings as the task.
+- **Set organized** and **Skip organized images** options.
+- **Dry run** to preview changes, and an **Image limit** for trial runs.
+- Optional **Scrape on scan** hook for new images.
 - Settings > Plugins shows the settings laid out like Identify's options.
 
 ## Running it
@@ -110,7 +110,7 @@ The studio follows the single-value rule: `merge` sets it only when the image ha
 
 ## Configuration
 
-Settings > Plugins > VH - Identify Images. The scraper and folders come first, then a **Field options** section with an Ignore / Merge / Overwrite dropdown per field and a **Create missing** toggle below Studio, Performers and Tags, then the run options.
+Settings > Plugins > VH - Identify Images. The scraper and folders come first, then the **Field options** section, then the run options. Stash plugin settings have no stored defaults: an empty setting means the default below, and an unset field option shows (and uses) Merge.
 
 | Setting | Default | Description |
 |---|---|---|
